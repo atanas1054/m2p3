@@ -4,8 +4,6 @@ import scipy.cluster
 from keras import backend as K
 from keras.engine import Layer
 
-predicting_frame_num = 12
-
 
 class Choose(Layer):
     def __init__(self, **kwargs):
@@ -22,7 +20,6 @@ class Choose(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
     def compute_output_shape(self, input_shape):
-
 
         return input_shape
 
@@ -137,3 +134,45 @@ def km_cluster( preds ):
         cluster_means.append( np.mean( np.array(clusters[c_idx]), axis = 0) );
 
     return clusters
+
+def bbox_iou(bbox_pred, bbox_gt):
+
+    """ Args
+    :param bbox_pred NxTx4 : predicted bounding boxes [N, T, x, y, w, h] where N-> batch size, T-> sequence length
+    :param bbox_gt NxTx4 : ground truth bounding boxes [N, T, x, y, w, h] where N-> batch size, T-> sequence length
+    :return: average iou and final iou
+    """
+    epsilon = 1e-5
+
+    iou_ = []
+
+    for i in range(bbox_pred.shape[0]):
+        #Coordinates of intersection boxes
+        x1 = np.array([bbox_pred[i, :, 0], bbox_gt[i, :, 0]]).max(axis=0)
+        y1 = np.array([bbox_pred[i, :, 1], bbox_gt[i, :, 1]]).max(axis=0)
+        x2 = np.array([bbox_pred[i, :, 0] + bbox_pred[i, :, 2], bbox_gt[i, :, 0] + bbox_gt[i, :, 2]]).min(axis=0)
+        y2 = np.array([bbox_pred[i, :, 1] + bbox_pred[i, :, 3], bbox_gt[i, :, 1] + bbox_gt[i, :, 3]]).min(axis=0)
+
+        # AREAS OF OVERLAP - Area where the boxes intersect
+        width = (x2 - x1)
+        height = (y2 - y1)
+
+        # handle case where there is NO overlap
+        width[width < 0] = 0
+        height[height < 0] = 0
+
+        area_overlap = width * height
+
+        # combined areas
+        area_a = (bbox_pred[i, :, 0] + bbox_pred[i, :, 2] - bbox_pred[i, :, 0]) * (bbox_pred[i, :, 1] + bbox_pred[i, :, 3] - bbox_pred[i, :, 1])
+        area_b = (bbox_gt[i, :, 0] + bbox_gt[i, :, 2] - bbox_gt[i, :, 0]) * (bbox_gt[i, :, 1] + bbox_gt[i, :, 3] - bbox_gt[i, :, 1])
+        area_combined = area_a + area_b - area_overlap
+
+        #intersection over union
+        iou = area_overlap / (area_combined + epsilon)
+        miou = np.mean(iou, axis = 0)
+        iou_.append(miou)
+
+    av_iou = np.mean(iou_)
+
+    return av_iou

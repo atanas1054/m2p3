@@ -6,6 +6,7 @@ import random
 
 import sys
 from utils import *
+from visualize import *
 
 from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Reshape, Lambda, RepeatVector, Dropout, Activation, Flatten
 from keras.layers.merge import dot, add, multiply, concatenate
@@ -82,9 +83,24 @@ def sample_z( args ):
     epsilon = K.random_normal(shape=(K.shape(args)[0], latent_dim), mean=0., stddev=1.)
     return z_mean + K.exp(z_log_var / 2) * epsilon
 
+def get_simple_model(input_shape, predicting_frame_num):
+
+    input1 = Input(shape=input_shape)
+    location_scale_encoder = TimeDistributed(Dense(128, activation='relu'))(input1)
+    location_scale_encoder = LSTM(128, implementation=1)(location_scale_encoder);
+
+    decoder = Dense(128, activation='relu')(location_scale_encoder);
+    decoder = RepeatVector(predicting_frame_num)(decoder);
+    decoder = LSTM(128, implementation=1, return_sequences=True)(decoder);
+    decoder = TimeDistributed(Dense(4))(decoder)
+
+    full_model = Model(inputs=[input1], outputs=decoder)
+    full_model.compile(optimizer=Adam(lr=1e-3), loss='mse')
+
+    return full_model
+
 def get_bms_model(input_shape,input_shape_latent, predicting_frame_num):
 
-    print(input_shape_latent)
     input_latent = Input(shape=input_shape_latent)
     input_latent_ = TimeDistributed(Dense(64, activation='relu'))(input_latent)
     h = LSTM(128, implementation=1)(input_latent_);
@@ -102,11 +118,11 @@ def get_bms_model(input_shape,input_shape_latent, predicting_frame_num):
     decoder = TimeDistributed(Dense(4))(decoder)
 
     full_model = Model(inputs=[input1,input_latent], outputs=decoder)
-    full_model.compile(optimizer=Adam(lr=1e-4), loss= bms_loss)
+    full_model.compile(optimizer=Adam(lr=1e-3), loss= bms_loss)
 
     return full_model
 
-def train(model, epochs, batch_gen, input, batch_size, x_batch_test):
+def train(model, epochs, batch_gen, input, batch_size, x_batch_test, y_batch_test):
 
     for epoch in range(1, epochs):
 
@@ -114,10 +130,27 @@ def train(model, epochs, batch_gen, input, batch_size, x_batch_test):
         dummy_xy = np.zeros((x_batch_test.shape[0] * test_samples, observed_frame_num + predicting_frame_num, 4)).astype(np.float32)
         preds = model.predict([x_batch_test, dummy_xy], batch_size=batch_size * test_samples, verbose=1)
         preds = np.reshape(preds, (int(x_batch_test.shape[0]/test_samples), test_samples, predicting_frame_num, 4))
-        clusters = km_cluster(preds)
-        print(len(clusters[0]))
+        gt = np.reshape(y_batch_test, (int(y_batch_test.shape[0]/test_samples), test_samples, predicting_frame_num, 4))
+        gt = np.mean(gt, axis=1)
+        m = np.mean(preds, axis=1)
+        average_iou = bbox_iou(m,gt)
 
+        print("Average IoU: " + str(average_iou))
 
+def train_simple(model, input_x, input_y, input_test, output_test):
+
+    model.fit([input_x], input_y,
+              batch_size=1024,
+              epochs=200,
+              verbose=1,
+              shuffle=False)
+
+    pred = model.predict(input_test, batch_size=512)
+    average_iou = bbox_iou(pred, output_test)
+
+    print("Average IoU: " + str(average_iou))
+
+    return pred
 
 
 
@@ -146,15 +179,18 @@ def get_output(pred,predicting_frame_num):
 def get_raw_data(path,observed_frame_num,predicting_frame_num):
     total_obs = []
     total_pred = []
+    paths = []
+
     for file in glob.glob(path + "*.csv"):
         raw_data, numPeds = preprocess(file)
         data = get_traj_like(raw_data, numPeds)
         obs, pred = get_obs_pred_like(data, observed_frame_num, predicting_frame_num)
 
+        paths.append(file)
         total_obs.append(obs)
         total_pred.append(pred)
 
-    return total_obs,total_pred
+    return total_obs, total_pred, paths
 
 
 train_images = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/train_frames/'
@@ -167,29 +203,34 @@ observed_frame_num = 8
 predicting_frame_num = 12
 batch_size = 256
 train_samples = 10
-test_samples = 100
+test_samples = 10
 epochs = 100
 latent_dim = 64
 
 if __name__ == '__main__':
 
     #Get training data
-    obs_train,pred_train = get_raw_data(train_annotations, observed_frame_num, predicting_frame_num)
+    obs_train,pred_train, train_paths = get_raw_data(train_annotations, observed_frame_num, predicting_frame_num)
     input_train = get_location_scale(obs_train, observed_frame_num)
     output_train = get_output(pred_train, predicting_frame_num)
 
     #Get testing data
-    obs_test, pred_test = get_raw_data(train_annotations, observed_frame_num, predicting_frame_num)
+    obs_test, pred_test, test_paths = get_raw_data(test_annotations, observed_frame_num, predicting_frame_num)
     input_test = get_location_scale(obs_test, observed_frame_num)
     output_test = get_output(pred_test, predicting_frame_num)
     (x_batch_test, y_batch_test) = get_test_batches(input_test, output_test, observed_frame_num,predicting_frame_num, test_samples);
-    x_test = x_batch_test[0:10000,:]
-    print(x_test.shape)
+    #x_test = x_batch_test[0:10000,:]
+    #y_test = y_batch_test[0:10000,:]
+
+    #print(y_test.shape)
 
     #Get and train model
     batch_gen = get_batch_gen(input_train, output_train, batch_size, observed_frame_num, predicting_frame_num, train_samples)
+    sim_model = get_simple_model((observed_frame_num, 4),predicting_frame_num)
     model = get_bms_model((observed_frame_num, 4), (observed_frame_num+predicting_frame_num, 4), predicting_frame_num)
-    train(model, epochs, batch_gen, input_train, batch_size, x_test)
+    train(model, epochs, batch_gen, input_train, batch_size, x_batch_test, y_batch_test)
+    #preds = train_simple(sim_model, input_train, output_train, input_test, output_test)
+    #visualize(preds, pred_test, test_paths, test_images)
 
 
 
