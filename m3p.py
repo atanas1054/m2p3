@@ -3,10 +3,14 @@ import os
 import cv2
 import numpy as np
 import random
+import skimage.io
+
 
 import sys
 from utils import *
 from visualize import *
+from load_mask_rcnn import *
+from human_appearance import *
 
 from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Reshape, Lambda, RepeatVector, Dropout, Activation, Flatten
 from keras.layers.merge import dot, add, multiply, concatenate
@@ -18,18 +22,23 @@ from keras.optimizers import SGD, Adam
 from keras import backend as K
 
 
+#TRAIN/TEST images and annotations JAAD dataset
+train_images = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/train_frames/'
+train_annotations = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/train_annotations/'
+test_images = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/test_frames/'
+test_annotations = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/test_annotations/'
 
-#for file in glob.glob(path_to_annotations+"*.csv"):
-    #read .csv file
-    #print(file)
-    #for frame in range(len(data[0])):
-        #print(path_to_images+os.path.splitext(os.path.basename(file))[0]+"/"+str(int(data[0][frame]))+".png")
-        #orignal_im = Image.open(path_to_images+os.path.splitext(os.path.basename(file))[0]+"/"+str(int(data[0][frame]))+".png")
-        ##resized_im, seg_map = model.run(orignal_im)
-        #img = cv2.imread(path_to_images+os.path.splitext(os.path.basename(file))[0]+"/"+str(int(data[0][frame]))+".png")
-        #height_, width_, _ = img.shape
-        #cv2.rectangle(img, (int(data[2][frame]*width_), int(data[3][frame]*height_)), ((int(data[2][frame]*width_) + int(data[4][frame]*width_)), (int(data[3][frame]*height_)+int(data[5][frame]*height_))), (255,0,0), 1)
-        #vis_results(resized_im, seg_map,img)
+
+observed_frame_num = 8
+predicting_frame_num = 12
+batch_size = 256
+train_samples = 10
+test_samples = 10
+epochs = 100
+latent_dim = 64
+
+mask_rcnn_model = get_mask_rcnn()
+
 
 def get_test_batches(x_data_test, y_data_test, input_seq, output_seq, test_samples):
     x_batch = x_data_test
@@ -193,24 +202,14 @@ def get_raw_data(path,observed_frame_num,predicting_frame_num):
     return total_obs, total_pred, paths
 
 
-train_images = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/train_frames/'
-train_annotations = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/train_annotations/'
-test_images = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/test_frames/'
-test_annotations = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/test_annotations/'
-
-
-observed_frame_num = 8
-predicting_frame_num = 12
-batch_size = 256
-train_samples = 10
-test_samples = 10
-epochs = 100
-latent_dim = 64
-
 if __name__ == '__main__':
 
     #Get training data
-    obs_train,pred_train, train_paths = get_raw_data(train_annotations, observed_frame_num, predicting_frame_num)
+    obs_train, pred_train, train_paths = get_raw_data(train_annotations, observed_frame_num, predicting_frame_num)
+    person_appearance = get_person_appearance(mask_rcnn_model, obs_train, train_paths, train_images)
+    print(person_appearance.shape)
+
+    np.save('person_appearance_vector.npy', person_appearance)
     input_train = get_location_scale(obs_train, observed_frame_num)
     output_train = get_output(pred_train, predicting_frame_num)
 
@@ -228,7 +227,7 @@ if __name__ == '__main__':
     batch_gen = get_batch_gen(input_train, output_train, batch_size, observed_frame_num, predicting_frame_num, train_samples)
     sim_model = get_simple_model((observed_frame_num, 4),predicting_frame_num)
     model = get_bms_model((observed_frame_num, 4), (observed_frame_num+predicting_frame_num, 4), predicting_frame_num)
-    train(model, epochs, batch_gen, input_train, batch_size, x_batch_test, y_batch_test)
+    #train(model, epochs, batch_gen, input_train, batch_size, x_batch_test, y_batch_test)
     #preds = train_simple(sim_model, input_train, output_train, input_test, output_test)
     #visualize(preds, pred_test, test_paths, test_images)
 
