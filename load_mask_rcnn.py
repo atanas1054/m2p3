@@ -1,7 +1,7 @@
 import os
 import sys
 
-ROOT_DIR = os.path.abspath("./Human_Appearance/mask_RCNN+deepSORT/deep_sort_mask_rcnn/Mask_RCNN")
+ROOT_DIR = os.path.abspath("./HumanAppearance/mask_RCNN+deepSORT/deep_sort_mask_rcnn/Mask_RCNN")
 
 # Import Mask RCNN
 sys.path.append(ROOT_DIR)  # To find local version of the library

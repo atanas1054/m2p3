@@ -146,33 +146,75 @@ def bbox_iou(bbox_pred, bbox_gt):
 
     iou_ = []
 
-    for i in range(bbox_pred.shape[0]):
-        #Coordinates of intersection boxes
-        x1 = np.array([bbox_pred[i, :, 0], bbox_gt[i, :, 0]]).max(axis=0)
-        y1 = np.array([bbox_pred[i, :, 1], bbox_gt[i, :, 1]]).max(axis=0)
-        x2 = np.array([bbox_pred[i, :, 0] + bbox_pred[i, :, 2], bbox_gt[i, :, 0] + bbox_gt[i, :, 2]]).min(axis=0)
-        y2 = np.array([bbox_pred[i, :, 1] + bbox_pred[i, :, 3], bbox_gt[i, :, 1] + bbox_gt[i, :, 3]]).min(axis=0)
 
-        # AREAS OF OVERLAP - Area where the boxes intersect
-        width = (x2 - x1)
-        height = (y2 - y1)
+    #if bbox have sample dimension in addition to batch size and sequence length
+    if len(bbox_pred.shape) > 3:
 
-        # handle case where there is NO overlap
-        width[width < 0] = 0
-        height[height < 0] = 0
+        for i in range(bbox_pred.shape[0]):
+            best_iou = 0
+            for j in range(bbox_pred.shape[1]):
+                # Coordinates of intersection boxes
+                x1 = np.array([bbox_pred[i, j, :, 0], bbox_gt[i, j, :, 0]]).max(axis=0)
+                y1 = np.array([bbox_pred[i, j, :, 1], bbox_gt[i, j, :, 1]]).max(axis=0)
+                x2 = np.array([bbox_pred[i, j, :, 0] + bbox_pred[i, j, :, 2], bbox_gt[i, j, :, 0] + bbox_gt[i, j, :, 2]]).min(axis=0)
+                y2 = np.array([bbox_pred[i, j, :, 1] + bbox_pred[i, j, :, 3], bbox_gt[i, j, :, 1] + bbox_gt[i, j, :, 3]]).min(axis=0)
 
-        area_overlap = width * height
+                # AREAS OF OVERLAP - Area where the boxes intersect
+                width = (x2 - x1)
+                height = (y2 - y1)
 
-        # combined areas
-        area_a = (bbox_pred[i, :, 0] + bbox_pred[i, :, 2] - bbox_pred[i, :, 0]) * (bbox_pred[i, :, 1] + bbox_pred[i, :, 3] - bbox_pred[i, :, 1])
-        area_b = (bbox_gt[i, :, 0] + bbox_gt[i, :, 2] - bbox_gt[i, :, 0]) * (bbox_gt[i, :, 1] + bbox_gt[i, :, 3] - bbox_gt[i, :, 1])
-        area_combined = area_a + area_b - area_overlap
+                # handle case where there is NO overlap
+                width[width < 0] = 0
+                height[height < 0] = 0
 
-        #intersection over union
-        iou = area_overlap / (area_combined + epsilon)
-        miou = np.mean(iou, axis = 0)
-        iou_.append(miou)
+                area_overlap = width * height
 
-    av_iou = np.mean(iou_)
+                # combined areas
+                area_a = (bbox_pred[i, j, :, 0] + bbox_pred[i, j, :, 2] - bbox_pred[i, j, :, 0]) * (
+                            bbox_pred[i, j, :, 1] + bbox_pred[i, j, :, 3] - bbox_pred[i, j, :, 1])
+                area_b = (bbox_gt[i, j, :, 0] + bbox_gt[i, j, :, 2] - bbox_gt[i, j, :, 0]) * (
+                            bbox_gt[i, j, :, 1] + bbox_gt[i, j, :, 3] - bbox_gt[i, j, :, 1])
+                area_combined = area_a + area_b - area_overlap
+
+                # intersection over union
+                iou = area_overlap / (area_combined + epsilon)
+                miou = np.mean(iou, axis=0)
+                if miou > best_iou:
+                    best_iou = miou
+
+            iou_.append(best_iou)
+        av_iou = np.mean(iou_)
+
+        return av_iou
+
+    else:
+        for i in range(bbox_pred.shape[0]):
+            #Coordinates of intersection boxes
+            x1 = np.array([bbox_pred[i, :, 0], bbox_gt[i, :, 0]]).max(axis=0)
+            y1 = np.array([bbox_pred[i, :, 1], bbox_gt[i, :, 1]]).max(axis=0)
+            x2 = np.array([bbox_pred[i, :, 0] + bbox_pred[i, :, 2], bbox_gt[i, :, 0] + bbox_gt[i, :, 2]]).min(axis=0)
+            y2 = np.array([bbox_pred[i, :, 1] + bbox_pred[i, :, 3], bbox_gt[i, :, 1] + bbox_gt[i, :, 3]]).min(axis=0)
+
+            # AREAS OF OVERLAP - Area where the boxes intersect
+            width = (x2 - x1)
+            height = (y2 - y1)
+
+            # handle case where there is NO overlap
+            width[width < 0] = 0
+            height[height < 0] = 0
+
+            area_overlap = width * height
+
+            # combined areas
+            area_a = (bbox_pred[i, :, 0] + bbox_pred[i, :, 2] - bbox_pred[i, :, 0]) * (bbox_pred[i, :, 1] + bbox_pred[i, :, 3] - bbox_pred[i, :, 1])
+            area_b = (bbox_gt[i, :, 0] + bbox_gt[i, :, 2] - bbox_gt[i, :, 0]) * (bbox_gt[i, :, 1] + bbox_gt[i, :, 3] - bbox_gt[i, :, 1])
+            area_combined = area_a + area_b - area_overlap
+
+            #intersection over union
+            iou = area_overlap / (area_combined + epsilon)
+            miou = np.mean(iou, axis = 0)
+            iou_.append(miou)
+
+        av_iou = np.mean(iou_)
 
     return av_iou
