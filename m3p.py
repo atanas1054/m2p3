@@ -12,6 +12,8 @@ from visualize_result import *
 from load_mask_rcnn import *
 from human_appearance import *
 from load_open_pose import *
+from load_deeplab import *
+from segmentation_map import *
 
 from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Reshape, Lambda, RepeatVector, Dropout, Activation, Flatten
 from keras.layers.merge import dot, add, multiply, concatenate
@@ -21,6 +23,8 @@ from keras.layers.recurrent import LSTM, SimpleRNN, GRU
 from keras.models import Model, Sequential
 from keras.optimizers import SGD, Adam
 from keras import backend as K
+from tensorflow import convert_to_tensor
+import tensorflow as tf
 
 
 #TRAIN/TEST images and annotations JAAD dataset
@@ -39,6 +43,9 @@ epochs = 1000
 latent_dim = 64
 person_appearance_size = 14*14
 person_pose_size = 17*2
+scene_features = 64
+#19 semantic classes of size 36x64
+semantic_maps = (19, 36, 64)
 
 #get mask_rcnn model
 mask_rcnn_model = get_mask_rcnn()
@@ -46,52 +53,86 @@ mask_rcnn_model = get_mask_rcnn()
 #get OpenPose model
 open_pose_model, open_pose_params, open_pose_model_params = get_open_pose()
 
+#get DeepLab model
+deeplab_model = DeepLabModel()
 
-def get_test_batches(x_data_test, appearance_test, pose_test, y_data_test, input_seq, output_seq, test_samples):
+
+def get_test_batches(x_data_test, appearance_test, pose_test, segmentation_test, y_data_test, input_seq, output_seq, test_samples):
     x_batch = x_data_test
     y_batch = y_data_test
+
     appearance_test_batch = appearance_test
+
     pose_test_batch = pose_test
+
+    segmentation_test_batch = segmentation_test
+
     tbatch_size = x_data_test.shape[0]
+
     appearance_test_batch = np.expand_dims(appearance_test_batch, axis=1)
     appearance_test_batch = np.repeat(appearance_test_batch, test_samples, axis=1)
+
     pose_test_batch = np.expand_dims(pose_test_batch, axis=1)
     pose_test_batch = np.repeat(pose_test_batch, test_samples, axis=1)
+
+    segmentation_test_batch = np.expand_dims(segmentation_test_batch, axis=1)
+    segmentation_test_batch = np.repeat(segmentation_test_batch, test_samples, axis=1)
+
     x_batch = np.expand_dims(x_batch, axis=1)
     x_batch = np.repeat(x_batch, test_samples, axis=1)
+
     y_batch = np.expand_dims(y_batch, axis=1)
     y_batch = np.repeat(y_batch, test_samples, axis=1)
+
     x_batch = np.reshape(x_batch, (tbatch_size*test_samples, input_seq, 4))
+
     appearance_test_batch = np.reshape(appearance_test_batch, (tbatch_size*test_samples, input_seq, person_appearance_size))
+
     pose_test_batch = np.reshape(pose_test_batch, (tbatch_size*test_samples, input_seq, person_pose_size))
+
+    segmentation_test_batch = np.reshape (segmentation_test_batch, (tbatch_size*test_samples, semantic_maps[0], semantic_maps[1], semantic_maps[2]))
+
     y_batch = np.reshape(y_batch, (tbatch_size*test_samples, output_seq, 4))
 
-    return (x_batch, appearance_test_batch, pose_test_batch, y_batch)
+    return (x_batch, appearance_test_batch, pose_test_batch, segmentation_test_batch, y_batch)
 
-def get_batch_gen(x_data, pose_data, appearance_data, y_data,batch_size,input_seq,output_seq,train_samples):
+def get_batch_gen(x_data, pose_data, appearance_data, segmentation_data, y_data,batch_size,input_seq,output_seq,train_samples):
     while 1:
         for i in range((int(x_data.shape[0]/batch_size))):
             idx = random.randint(0,(int(x_data.shape[0]/batch_size))-1)
+
             appearance_batch = appearance_data[idx*batch_size:idx*batch_size+batch_size,:]
+
             pose_batch = pose_data[idx*batch_size:idx*batch_size+batch_size,:]
+
+            segmentation_batch = segmentation_data[idx*batch_size:idx*batch_size+batch_size,:]
+
             x_batch = x_data[idx*batch_size:idx*batch_size+batch_size,:]
+
             y_batch = y_data[idx*batch_size:idx*batch_size+batch_size,:]
 
             x_batch = np.expand_dims(x_batch,axis=1);
             x_batch = np.repeat(x_batch, train_samples, axis=1);
+
             appearance_batch = np.expand_dims(appearance_batch, axis=1)
             appearance_batch = np.repeat(appearance_batch, train_samples, axis=1)
+
             pose_batch = np.expand_dims(pose_batch, axis=1)
             pose_batch = np.repeat(pose_batch, train_samples, axis=1)
+
+            segmentation_batch = np.expand_dims(segmentation_batch, axis=1)
+            segmentation_batch  = np.repeat(segmentation_batch , train_samples, axis=1)
+
             y_batch = np.expand_dims(y_batch, axis=1);
             y_batch = np.repeat(y_batch, train_samples, axis=1);
 
             appearance_batch = np.reshape(appearance_batch,(batch_size*train_samples,input_seq, person_appearance_size))
             pose_batch = np.reshape(pose_batch, (batch_size*train_samples,input_seq, person_pose_size))
+            segmentation_batch = np.reshape(segmentation_batch, (batch_size*train_samples, semantic_maps[0], semantic_maps[1], semantic_maps[2]))
             x_batch = np.reshape(x_batch,(batch_size*train_samples,input_seq,4));
             y_batch = np.reshape(y_batch,(batch_size*train_samples,output_seq,4));
 
-            yield [x_batch, appearance_batch, pose_batch, y_batch], y_batch
+            yield [x_batch, appearance_batch, pose_batch, segmentation_batch, y_batch], y_batch
 
 
 
@@ -115,6 +156,68 @@ def sample_z( args ):
     epsilon = K.random_normal(shape=(K.shape(args)[0], latent_dim), mean=0., stddev=1.)
     return z_mean + K.exp(z_log_var / 2) * epsilon
 
+def pool_seg_features( args):
+
+    seg_maps = args[0] #None, 64, 18, 32
+    ped_locations = args[1] #None, 8, 4
+    width = 32
+    height = 18
+
+    seg_maps = tf.transpose(seg_maps, perm=[0, 2, 3, 1])
+    #shape None,8
+    pos_x = tf.keras.backend.round(ped_locations[:, :, 0]*width) + tf.keras.backend.round(ped_locations[:, :, 2]*width)
+    pos_y = tf.keras.backend.round(ped_locations[:, :, 1]*height) + tf.keras.backend.round(ped_locations[:, :, 3]*height)
+    pos_x = K.cast(pos_x, "int32")
+    pos_y = K.cast(pos_y, "int32")
+
+
+    b_size = tf.shape(seg_maps)[0]
+    batch_idx = tf.range(0, b_size)
+    h1 = pos_y[:,0]
+    w1 = pos_x[:,0]
+    indices = tf.stack([batch_idx, h1, w1], axis=1)
+    f1 = tf.gather_nd(seg_maps, indices)
+
+    h1 = pos_y[:, 1]
+    w1 = pos_x[:, 1]
+    indices = tf.stack([batch_idx, h1, w1], axis=1)
+    f2 = tf.gather_nd(seg_maps, indices)
+
+    h1 = pos_y[:, 2]
+    w1 = pos_x[:, 2]
+    indices = tf.stack([batch_idx, h1, w1], axis=1)
+    f3 = tf.gather_nd(seg_maps, indices)
+
+    h1 = pos_y[:, 3]
+    w1 = pos_x[:, 3]
+    indices = tf.stack([batch_idx, h1, w1], axis=1)
+    f4 = tf.gather_nd(seg_maps, indices)
+
+    h1 = pos_y[:, 4]
+    w1 = pos_x[:, 4]
+    indices = tf.stack([batch_idx, h1, w1], axis=1)
+    f5 = tf.gather_nd(seg_maps, indices)
+
+    h1 = pos_y[:, 5]
+    w1 = pos_x[:, 5]
+    indices = tf.stack([batch_idx, h1, w1], axis=1)
+    f6 = tf.gather_nd(seg_maps, indices)
+
+    h1 = pos_y[:, 6]
+    w1 = pos_x[:, 6]
+    indices = tf.stack([batch_idx, h1, w1], axis=1)
+    f7 = tf.gather_nd(seg_maps, indices)
+
+    h1 = pos_y[:, 7]
+    w1 = pos_x[:, 7]
+    indices = tf.stack([batch_idx, h1, w1], axis=1)
+    f8 = tf.gather_nd(seg_maps, indices)
+
+    f = K.stack([f1,f2,f3,f4,f5,f6,f7,f8], axis=1)
+
+    # output shape None,8,64
+    return f
+
 def get_simple_model(location_scale_shape, person_appearance_shape, predicting_frame_num):
 
     input1 = Input(shape=location_scale_shape)
@@ -136,7 +239,7 @@ def get_simple_model(location_scale_shape, person_appearance_shape, predicting_f
 
     return full_model
 
-def get_bms_model(input_shape, person_appearance_shape, person_pose_shape, input_shape_latent, predicting_frame_num):
+def get_bms_model(input_shape, person_appearance_shape, person_pose_shape, seg_mask_shape, input_shape_latent, predicting_frame_num):
 
     input_latent = Input(shape=input_shape_latent)
     input_latent_ = TimeDistributed(Dense(64, activation='tanh'))(input_latent)
@@ -148,6 +251,11 @@ def get_bms_model(input_shape, person_appearance_shape, person_pose_shape, input
     input1 = Input(shape=input_shape)
     input2 = Input(shape=person_appearance_shape)
     input3 = Input(shape=person_pose_shape)
+    input4 = Input(shape=seg_mask_shape)
+
+    conv_layer = Conv2D(64, (3, 3), activation='relu', padding='same', strides = 2, data_format="channels_first") (input4)
+    scene_features = Lambda(pool_seg_features, output_shape=(observed_frame_num, 64,))([conv_layer, input1])
+    scene_encoder = GRU(256, implementation=1)(scene_features)
 
     person_appearance_encoder = TimeDistributed(Dense(128, activation='tanh'))(input2)
     person_appearance_encoder = GRU(256, implementation=1)(person_appearance_encoder)
@@ -158,18 +266,18 @@ def get_bms_model(input_shape, person_appearance_shape, person_pose_shape, input
     location_scale_encoder = TimeDistributed(Dense(128, activation='tanh'))(input1)
     location_scale_encoder = GRU(256, implementation=1)(location_scale_encoder);
 
-    decoder = concatenate([location_scale_encoder, person_appearance_encoder, person_pose_encoder, z]);
+    decoder = concatenate([location_scale_encoder, person_appearance_encoder, person_pose_encoder, scene_encoder, z]);
     decoder = Dense(128, activation='tanh')(decoder);
     decoder = RepeatVector(predicting_frame_num)(decoder);
     decoder = GRU(256, implementation=1, return_sequences=True)(decoder);
     decoder = TimeDistributed(Dense(4))(decoder)
 
-    full_model = Model(inputs=[input1, input2, input3, input_latent], outputs=decoder)
+    full_model = Model(inputs=[input1, input2, input3, input4, input_latent], outputs=decoder)
     full_model.compile(optimizer=Adam(lr=1e-3), loss= bms_loss)
 
     return full_model
 
-def train(model, epochs, batch_gen, input, batch_size, x_batch_test, appearance_test_batch, pose_test_batch, y_batch_test):
+def train(model, epochs, batch_gen, input, batch_size, x_batch_test, appearance_test_batch, pose_test_batch, segmentation_test_batch, y_batch_test):
 
     for epoch in range(1, epochs):
 
@@ -177,7 +285,7 @@ def train(model, epochs, batch_gen, input, batch_size, x_batch_test, appearance_
 
     dummy_y = np.zeros((y_batch_test.shape[0] * test_samples, predicting_frame_num, 4)).astype(np.float32)
 
-    preds = model.predict([x_batch_test, appearance_test_batch, pose_test_batch,  dummy_y], batch_size=batch_size * test_samples, verbose=1)
+    preds = model.predict([x_batch_test, appearance_test_batch, pose_test_batch, segmentation_test_batch, dummy_y], batch_size=batch_size * test_samples, verbose=1)
     preds = np.reshape(preds, (int(x_batch_test.shape[0] / test_samples), test_samples, predicting_frame_num, 4))
 
     gt = np.reshape(y_batch_test, (int(y_batch_test.shape[0] / test_samples), test_samples, predicting_frame_num, 4))
@@ -251,18 +359,25 @@ if __name__ == '__main__':
     obs_train, pred_train, train_paths = get_raw_data(train_annotations, observed_frame_num, predicting_frame_num)
     #person_appearance = get_person_appearance(mask_rcnn_model, obs_train, train_paths, train_images)
     #person_pose_train = get_person_pose(open_pose_model, open_pose_params, open_pose_model_params, obs_train, train_paths, train_images)
-    #np.save('person_pose_train.npy', person_pose_train)
 
-    #np.save('person_appearance_vector.npy', person_appearance)
+    #segmentation_masks_train = get_seg_map(deeplab_model, obs_train, train_paths, train_images)
+    #np.save('segmentation_masks_train.npy', segmentation_masks_train)
+    segmentation_masks_train = np.load('segmentation_masks_train.npy')
+    print(segmentation_masks_train.shape)
     person_appearance_train = np.load('person_appearance_train.npy')
+    print(person_appearance_train.shape)
     person_pose_train = np.load('person_pose_train.npy')
     input_train = get_location_scale(obs_train, observed_frame_num)
+    print(input_train.shape)
     output_train = get_output(pred_train, predicting_frame_num)
 
     #Get testing data
     obs_test, pred_test, test_paths = get_raw_data(test_annotations, observed_frame_num, predicting_frame_num)
+    #segmentation_masks_test = get_seg_map(deeplab_model, obs_test, test_paths, test_images)
+    #np.save('segmentation_masks_test.npy', segmentation_masks_test)
     #person_appearance_test = get_person_appearance(mask_rcnn_model, obs_test, test_paths, test_images)
     #np.save('person_appearance_test.npy', person_appearance_test)
+    segmentation_masks_test = np.load('segmentation_masks_test.npy')
     person_appearance_test = np.load('person_appearance_test.npy')
     person_pose_test = np.load('person_pose_test.npy')
     #person_pose_test = get_person_pose(open_pose_model, open_pose_params, open_pose_model_params, obs_test, test_paths, test_images)
@@ -271,19 +386,19 @@ if __name__ == '__main__':
 
     input_test = get_location_scale(obs_test, observed_frame_num)
     output_test = get_output(pred_test, predicting_frame_num)
-    (x_batch_test, appearance_test, pose_test, y_batch_test) = get_test_batches(input_test, person_appearance_test, person_pose_test, output_test, observed_frame_num, predicting_frame_num, test_samples)
+    (x_batch_test, appearance_test, pose_test, segmentation_test, y_batch_test) = get_test_batches(input_test, person_appearance_test, person_pose_test, segmentation_masks_test, output_test, observed_frame_num, predicting_frame_num, test_samples)
 
 
     #Get and train model
-    batch_gen = get_batch_gen(input_train, person_pose_train, person_appearance_train, output_train, batch_size, observed_frame_num, predicting_frame_num, train_samples)
+    batch_gen = get_batch_gen(input_train, person_pose_train, person_appearance_train, segmentation_masks_train, output_train, batch_size, observed_frame_num, predicting_frame_num, train_samples)
     #simple_model = get_simple_model((observed_frame_num, 4),(observed_frame_num,person_appearance_size), predicting_frame_num)
-    model = get_bms_model((observed_frame_num, 4), (observed_frame_num,person_appearance_size), (observed_frame_num, person_pose_size), (predicting_frame_num, 4), predicting_frame_num)
+    model = get_bms_model((observed_frame_num, 4), (observed_frame_num,person_appearance_size), (observed_frame_num, person_pose_size), semantic_maps, (predicting_frame_num, 4), predicting_frame_num)
     #model.summary()
-    preds = train(model, epochs, batch_gen, input_train, batch_size, x_batch_test, appearance_test, pose_test, y_batch_test)
+    preds = train(model, epochs, batch_gen, input_train, batch_size, x_batch_test, appearance_test, pose_test, segmentation_test, y_batch_test)
 
 
     #preds = train_simple(simple_model, input_train, person_appearance_train, output_train, input_test, person_appearance_test, output_test)
-    print(preds.shape)
+    #print(preds.shape)
     visualize_result(preds, pred_test, test_paths, test_images)
 
 

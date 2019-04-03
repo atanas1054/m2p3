@@ -1,5 +1,5 @@
 import sys
-sys.path.append('models/research/deeplab/utils/')
+sys.path.append('./utils/')
 from matplotlib import pyplot as plt
 import get_dataset_colormap
 import numpy as np
@@ -10,14 +10,7 @@ from io import BytesIO
 import tarfile
 import tempfile
 
-#LABEL_NAMES = np.asarray([
-    #'_background_','RoadMarking_LongSolidLine','RoadMarking_DottedLine','RoadMarking_ArrowLine',
- #   #    'RoadMarking_EntranceLine','RoadMarking_TransverseSolidLine'
-#,'RoadMarking_Sidewalk','RoadMarking_DottedLineChangXi','mark','RoadMarking_MeshLine','RoadMarking_DecelerationHeng',
-#'RoadMarking_python labelme2voc.py --hDecelerationZong','RoadMarking_DottedLineDuanXi'
-#])
-#FULL_LABEL_MAP = np.arange(len(LABEL_NAMES)).reshape(len(LABEL_NAMES), 1)
-#FULL_COLOR_MAP = get_dataset_colormap.label_to_color_image(FULL_LABEL_MAP)
+
 class DeepLabModel(object):
     """Class to load deeplab model and run inference."""
     INPUT_TENSOR_NAME = 'ImageTensor:0'
@@ -70,11 +63,11 @@ class DeepLabModel(object):
 
 def vis_segmentation(image, seg_map):
         plt.figure()
-        plt.subplot(221)
-        plt.imshow(image)
-        plt.axis('off')
-        plt.title('input image')
-        plt.subplot(222)
+        #plt.subplot(221)
+        #plt.imshow(image)
+        #plt.axis('off')
+        #plt.title('input image')
+        #plt.subplot(222)
         seg_image = get_dataset_colormap.label_to_color_image(
             seg_map, get_dataset_colormap.get_cityscapes_name()).astype(np.uint8)
         plt.imshow(seg_image)
@@ -106,12 +99,12 @@ def vis_segmentation(image, seg_map):
 #FULL_COLOR_MAP = label_to_color_image(FULL_LABEL_MAP)
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3:
-        print('Usage: python {} image_path model_path'.format(sys.argv[0]))
-        exit()
+    #if len(sys.argv) < 3:
+        #print('Usage: python {} image_path model_path'.format(sys.argv[0]))
+        #exit()
 
-    image_path = sys.argv[1]
-    model_path = sys.argv[2]
+    image_path = "1.png"
+    model_path = "deeplabv3_cityscapes_train_2018_02_06.tar.gz"
     model = DeepLabModel(model_path)
     orignal_im = Image.open(image_path)
     resized_im, seg_map = model.run(orignal_im)

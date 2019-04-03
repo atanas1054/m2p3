@@ -6,9 +6,9 @@ Location-scale + Pedestrian appearance + Pedestrian pose
 
 BMS Model (1 sample, 1000 epochs)
 
-Location-scale 0.263 mIoU,  0.256, 0.253
-Location-scale + Pedestrian appearance 0.271, 0.249, 0.206 mIoU
-Location-scale + Pedestrian appearance + Pedestrian pose  0.237 mIoU, 0.242 mIoU, 0.2189 
+Location-scale 
+Location-scale + Pedestrian appearance 
+Location-scale + Pedestrian appearance + Pedestrian pose  
 
 BMS Model (10 samples, 1000 epochs)
 
@@ -18,6 +18,6 @@ Location-scale + Pedestrian appearance + Pedestrian pose
 
 BMS Model (20 samples, 1000 epochs)
 
-Location-scale 0.594, 0.56
-Location-scale + Pedestrian appearance 0.582
-Location-scale + Pedestrian appearance + Pedestrian pose 0.562
+Location-scale 0.56
+Location-scale + Pedestrian appearance 0.584
+Location-scale + Pedestrian appearance + Pedestrian pose 0.586 
