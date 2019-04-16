@@ -41,7 +41,7 @@ nn_opts['adapt_info'] = (1, 436, 1024, 2)
 
 # Instantiate the model in inference mode and display the model configuration
 nn = ModelPWCNet(mode='test', options=nn_opts)
-nn.print_config()
+#nn.print_config()
 
 # Generate the predictions and display them
 pred_labels = nn.predict_from_img_pairs(img_pairs, batch_size=1, verbose=False)

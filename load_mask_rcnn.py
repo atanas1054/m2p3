@@ -32,7 +32,7 @@ class InferenceConfig(coco.CocoConfig):
     IMAGES_PER_GPU = 1
 
 config = InferenceConfig()
-config.display()
+#config.display()
 
 
 def get_mask_rcnn():

@@ -21,3 +21,8 @@ BMS Model (20 samples, 1000 epochs)
 Location-scale 0.56
 Location-scale + Pedestrian appearance 0.584
 Location-scale + Pedestrian appearance + Pedestrian pose 0.586 
+Location-scale + Pedestrian appearance + Pedestrian pose + Scene context 0.593
+
+PI - person interaction
+OF - opticall flow
+SC - scene context

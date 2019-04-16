@@ -121,6 +121,7 @@ def display_img_pairs_w_flows(
         flow_mag_max: Max flow to map to 255
     """
     plt = plot_img_pairs_w_flows(img_pairs, None, 0, flow_preds, flow_gts, titles, info, flow_mag_max)
+    #plt.show()
 
     return plt
 

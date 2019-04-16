@@ -12,6 +12,8 @@ import numpy as np
 from PIL import Image
 from copy import deepcopy
 from skimage.io import imread
+import matplotlib.animation as animation
+import matplotlib.pyplot as plt
 
 from deep_sort import preprocessing
 from deep_sort import nn_matching
@@ -36,9 +38,8 @@ import coco
 COCO_MODEL_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
 MODEL_DIR = os.path.join(ROOT_DIR, "logs")
 
-OPTICAL_FLOW_DIR = os.path.abspath("../../../Optical_flow/tpflow/tfoptflow-master/tfoptflow/")
+OPTICAL_FLOW_DIR = os.path.abspath("../../../OpticalFlow/tpflow/tfoptflow-master/tfoptflow/")
 sys.path.append(OPTICAL_FLOW_DIR)
-
 
 from model_pwcnet import ModelPWCNet, _DEFAULT_PWCNET_TEST_OPTIONS
 from visualize import display_img_pairs_w_flows
@@ -109,23 +110,24 @@ def main():
 
     writeVideo_flag = True
 
-
     previousFrame = None
     
-    video_capture = cv2.VideoCapture('video_0122.mp4')
+    video_capture = cv2.VideoCapture(sys.argv[1])
+
 
     if writeVideo_flag:
     # Define the codec and create VideoWriter object
         w = int(video_capture.get(3))
         h = int(video_capture.get(4))
         fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-        out = cv2.VideoWriter('output.avi', fourcc, 15, (w, h))
+        out = cv2.VideoWriter('output_detections.avi', fourcc, 15, (w, h))
+        out_flow = cv2.VideoWriter('output_flow.avi', fourcc, 15, (1500, 500))
         list_file = open('detection.txt', 'w')
         frame_index = -1 
         
     fps = 0.0
     while True:
-        ret, frame = video_capture.read()  # frame shape 640*480*3
+        ret, frame = video_capture.read()
         if ret != True:
             break;
         t1 = time.time()
@@ -139,9 +141,21 @@ def main():
             #Run optical flow on the image pair and display
             flow = nn.predict_from_img_pairs(img_pairs, batch_size=1, verbose=False)
             plot = display_img_pairs_w_flows(img_pairs, flow)
-            plot.show(block=False)
-            plot.pause(1)
-            plot.close()
+            fig = plot.gcf()
+            fig.canvas.draw()
+
+
+            img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8,
+                                sep='')
+            img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
+            # img is rgb, convert to opencv's default bgr
+            img_flow = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            out_flow.write(img_flow)
+
+            # display image with opencv or any operation you like
+            cv2.imshow("plot", img_flow)
+
 
         frame_ = deepcopy(frame)
         previousFrame = frame_
@@ -158,8 +172,6 @@ def main():
             y1, x1, y2, x2 = boxs[i]
             boxs[i] = [x1, y1, x2 - x1, y2 - y1]
 
-        #boxs = YOLO.detect_image(image)
-       # print("box_num",len(boxs))
         features = encoder(frame,boxs)
         
         # score to 1.0 here).
@@ -205,9 +217,13 @@ def main():
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
+
+
+
     video_capture.release()
     if writeVideo_flag:
         out.release()
+        out_flow.release()
         list_file.close()
     cv2.destroyAllWindows()
 
