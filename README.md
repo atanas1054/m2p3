@@ -4,7 +4,7 @@
 # Dependencies
   
   The code was tested on Ubuntu 16.04,Python 3 and a GTX 1080 gpu . The following dependencies are needed:
-
+  ```
   numpy
   scipy
   Pillow
@@ -17,7 +17,7 @@
   h5py
   imgaug
   scikit-learn
-  
+  ```
   The dependencies can be installed using "pip install"
 
 
@@ -52,4 +52,5 @@
 # References
 
  [1] K. He, G. Gkioxari, P. Dollar, and R. Girshick, “Mask R-CNN,” in IEEE International Conference on Computer Vision (ICCV), 2017.
+
  [2] A. Bewley, Z. Ge, L. Ott, F. Ramos, and B. Upcroft, “Simple online and realtime tracking,” in IEEE International Conference on Image Processing (ICIP), 2016.
