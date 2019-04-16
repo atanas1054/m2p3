@@ -23,7 +23,7 @@
 
 # Milestone 1 (M1)
 
-  We demonstrate Milestone 1 by showing the bounding box and unique ID’s (of the pedestrians) together with the optical flow of the scene given the input images. The code uses the implementation of [1] and [2]. In order to run the demo, the following steps should be taken:
+  We demonstrate Milestone 1 by showing the bounding box and unique ID’s (of the pedestrians) together with the optical flow of the scene given the input images. The code uses the implementation of [1], [2] and [3]. In order to run the demo, the following steps should be taken:
   
   1. Download the extract the whole project
   2. Download the mask-RCNN weights from here https://github.com/matterport/Mask_RCNN/releases/download/v2.0/mask_rcnn_coco.h5
