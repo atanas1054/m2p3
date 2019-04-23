@@ -9,13 +9,10 @@ import skimage.io
 import sys
 from utils_ import *
 from visualize_result import *
-from load_mask_rcnn import *
 from human_appearance import *
-from load_open_pose import *
-from load_deeplab import *
 from segmentation_map import *
-from load_optical_flow import *
 from optical_flow import *
+from load_models import *
 
 from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Reshape, Lambda, RepeatVector, Dropout, Activation, Flatten
 from keras.layers.merge import dot, add, multiply, concatenate
@@ -57,10 +54,10 @@ semantic_maps = (19, 36, 64)
 #open_pose_model, open_pose_params, open_pose_model_params = get_open_pose()
 
 #get DeepLab model
-#deeplab_model = DeepLabModel()
+deeplab_model = DeepLabModel()
 
 #get OpticalFlow model
-optical_flow_model = load_optical_flow_model()
+#optical_flow_model = load_optical_flow_model()
 
 def get_test_batches(x_data_test, appearance_test, pose_test, segmentation_test, optical_flow_test, y_data_test, input_seq, output_seq, test_samples):
     x_batch = x_data_test
@@ -186,9 +183,13 @@ def pool_seg_features( args):
     seg_maps = tf.transpose(seg_maps, perm=[0, 2, 3, 1])
     #shape None,8
     pos_x = ped_locations[:, :, 0]*width + ped_locations[:, :, 2]*width
+    pos_x = K.print_tensor(pos_x, message="pos_x: ")
+    print(K.int_shape((pos_x)))
     pos_y = ped_locations[:, :, 1]*height + ped_locations[:, :, 3]*height
     pos_x = K.cast(K.round(pos_x), 'int32')
     pos_y = K.cast(K.round(pos_y), 'int32')
+
+    #pos_x = K.print_tensor(pos_x, message = "pos_x_norm: ")
 
     feature_maps = []
     b_size = tf.shape(seg_maps)[0]
@@ -202,6 +203,7 @@ def pool_seg_features( args):
         feature_maps.append(f_i)
 
     f = K.stack(feature_maps, axis=1)
+    f = K.print_tensor(f, message="seg_maps: ")
 
     # output shape None,8,64
     return f
@@ -356,17 +358,18 @@ if __name__ == '__main__':
     #person_pose_train = get_person_pose(open_pose_model, open_pose_params, open_pose_model_params, obs_train, train_paths, train_images)
     #optical_flow_train = get_optical_flow(optical_flow_model, obs_train, train_paths, train_images)
     #np.save('optical_flow_train.npy', optical_flow_train)
-    #segmentation_masks_train = get_seg_map(deeplab_model, obs_train, train_paths, train_images)
+    segmentation_masks_train = get_seg_map(deeplab_model, obs_train, train_paths, train_images)
     #np.save('segmentation_masks_train.npy', segmentation_masks_train)
     optical_flow_train = np.load('optical_flow_train.npy')
-    print(optical_flow_train.shape)
+    print("Optical flow shape= ", optical_flow_train.shape)
     segmentation_masks_train = np.load('segmentation_masks_train.npy')
-    print(segmentation_masks_train.shape)
+    print("Seg maps shape= ", segmentation_masks_train)
     person_appearance_train = np.load('person_appearance_train.npy')
-    print(person_appearance_train.shape)
+    print("Appearance features shape=", person_appearance_train.shape)
     person_pose_train = np.load('person_pose_train.npy')
+    print("Person pose shape=", person_pose_train.shape)
     input_train = get_location_scale(obs_train, observed_frame_num)
-    print(input_train.shape)
+    print("Location scale shape=", input_train.shape)
     output_train = get_output(pred_train, predicting_frame_num)
 
     #Get testing data
@@ -378,7 +381,7 @@ if __name__ == '__main__':
     #person_appearance_test = get_person_appearance(mask_rcnn_model, obs_test, test_paths, test_images)
     #np.save('person_appearance_test.npy', person_appearance_test)
     optical_flow_test = np.load('optical_flow_test.npy')
-    print(optical_flow_test.shape)
+    #print(optical_flow_test.shape)
     segmentation_masks_test = np.load('segmentation_masks_test.npy')
     person_appearance_test = np.load('person_appearance_test.npy')
     person_pose_test = np.load('person_pose_test.npy')
@@ -394,7 +397,7 @@ if __name__ == '__main__':
     batch_gen = get_batch_gen(input_train, person_pose_train, person_appearance_train, segmentation_masks_train, optical_flow_train, output_train, batch_size, observed_frame_num, predicting_frame_num, train_samples)
     #simple_model = get_simple_model((observed_frame_num, 4),(observed_frame_num,person_appearance_size), predicting_frame_num)
     model = get_bms_model((observed_frame_num, 4), (observed_frame_num,person_appearance_size), (observed_frame_num, person_pose_size), semantic_maps, (observed_frame_num, optic_flow_features), (predicting_frame_num, 4), predicting_frame_num)
-    #model.summary()
+    model.summary()
     preds = train(model, epochs, batch_gen, input_train, batch_size, x_batch_test, appearance_test, pose_test, segmentation_test, optic_flow_test, y_batch_test)
 
 
