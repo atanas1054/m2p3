@@ -1,0 +1,2 @@
+/home/atanas/M3P/git/PoseEstimation/AlphaPose/AlphaPose-pytorch/examples/demo/1.png
+/home/atanas/M3P/git/PoseEstimation/AlphaPose/AlphaPose-pytorch/examples/demo/2.png

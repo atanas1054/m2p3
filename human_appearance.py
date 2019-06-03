@@ -11,6 +11,14 @@ import gc
 import cv2
 import copy
 
+import torch
+from torch.autograd import Variable
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+
+import torch.nn as nn
+import torch.utils.data
+
 from scipy.ndimage.filters import gaussian_filter
 
 ROOT_DIR = os.path.abspath("./PoseEstimation/keras_Realtime_Multi-Person_Pose_Estimation-master/")
@@ -19,7 +27,24 @@ ROOT_DIR = os.path.abspath("./PoseEstimation/keras_Realtime_Multi-Person_Pose_Es
 sys.path.append(ROOT_DIR)  # To find local version of the library
 import util
 
+ALPHA_POSE = os.path.abspath(("./PoseEstimation/AlphaPose/AlphaPose-pytorch/"))
 
+# Import AlphaPose
+sys.path.append(ALPHA_POSE)  # To find local version of the library
+from opt import opt
+import demo
+
+from dataloader import ImageLoader, DetectionLoader, DetectionProcessor, DataWriter, Mscoco
+from yolo.util import write_results, dynamic_write_results
+from SPPE.src.main_fast_inference import *
+
+from tqdm import tqdm
+import time
+from fn import getTime
+
+from pPose_nms import pose_nms, write_json
+
+#OpenPose
 def get_person_appearance(model, obs, paths, path_to_images):
 
     #14x14 = 196 sized flattened feature vector
@@ -64,6 +89,7 @@ def get_person_appearance(model, obs, paths, path_to_images):
     return activations_
 
 
+#OpenPose
 def get_person_pose(model, params, model_params, obs, paths, path_to_images):
 
     #17 2D joint locations
@@ -162,3 +188,65 @@ def get_person_pose(model, params, model_params, obs, paths, path_to_images):
     all_coords_ = np.reshape(all_coords, [len(all_coords), obs[0].shape[1], feature_size])
 
     return all_coords_
+
+
+#AlphaPose
+
+def get_person_pose_(obs, paths, path_to_images):
+    count = 0
+    output = './PoseEstimation/AlphaPose/AlphaPose-pytorch/examples/demo/'
+    #17 2D human joints
+    feature_size = 34
+
+    #extract people from data
+    for i in range(len(obs)):
+        for person in range(obs[i].shape[0]):
+            for frame in range(obs[i].shape[1]):
+                count += 1
+                image = cv2.imread(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(
+                     int(obs[i][person][frame][1])) + ".png")
+
+                print(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(
+                     int(obs[i][person][frame][1])) + ".png")
+                #
+                height_, width_, _ = image.shape
+                #
+                x1 = int(obs[i][person][frame][2] * width_)
+                y1 = int(obs[i][person][frame][3] * height_)
+                x2 = int(obs[i][person][frame][2] * width_) + int(obs[i][person][frame][4] * width_)
+                y2 = int(obs[i][person][frame][3] * height_) + int(obs[i][person][frame][5] * height_)
+                #
+                cropped_person = image[y1:y2, x1:x2]
+                cropped_person = cv2.resize(cropped_person, (64, 128))
+
+                outfile = output + '%s.jpg' % (str(count))
+
+                cv2.imwrite(outfile, cropped_person)
+
+
+    #extract poses for each person
+    keypoints = demo.test()
+
+    #count = 33256
+
+    final_pose = np.zeros((count,feature_size))
+
+    print(range(len(keypoints)))
+    for i in range(len(keypoints)):
+      img_name = keypoints[i].get('imgname')
+      index = int(os.path.splitext(img_name)[0])
+
+      if len(keypoints[i].get('result')) > 0:
+         pose = keypoints[i].get('result')[0].get('keypoints')
+         image = cv2.imread(output+img_name)
+         height_, width_, _ = image.shape
+         pose = pose.numpy()
+         #normalize pose
+         pose[:,0] = pose[:, 0] / width_
+         pose[:,1] = pose[:, 1] / height_
+         pose = pose.flatten()
+         final_pose[index-1] = pose
+
+    final_pose = np.reshape(final_pose, [int(count / obs[0].shape[1]), obs[0].shape[1], feature_size])
+
+    return final_pose

@@ -1,6 +1,8 @@
 import numpy as np
+import glob
 import os
 import scipy.cluster
+from sklearn.cluster import KMeans
 from keras import backend as K
 from keras.engine import Layer
 import tensorflow as tf
@@ -274,12 +276,12 @@ def get_traj_like(data, numPeds):
     '''
     traj_data = []
 
-    #sample every n frames
-    sample = 5
+
     for pedIndex in numPeds:
         traj = []
         for i in range(len(data[1])):
-            if data[1][i] == pedIndex and i % sample == 0:
+            #and data[5][i] > 0.05 and data[4][i] * 1.77 / data[5][i] < 0.7
+            if data[1][i] == pedIndex:
                 traj.append([data[1][i], data[0][i], data[2][i], data[3][i], data[4][i], data[5][i]])
         traj = np.reshape(traj, [-1, 6])
 
@@ -351,23 +353,55 @@ def location_scale_output(pred, predicting_frame_num):
 
     return location_scale_output
 
-def km_cluster( preds ):
 
-    n_clusters = 4;
-    _data_X = np.reshape(preds,(preds.shape[0],-1));
-    centroids,_ = scipy.cluster.vq.kmeans(_data_X,n_clusters)
-    idx,_ = scipy.cluster.vq.vq(_data_X,centroids)
+def get_location_scale(obs,observed_frame_num):
 
-    clusters = [[] for _ in range(n_clusters)];
+    loc_scale_input = []
+    for i in range(len(obs)):
+        loc_scale_input_ = location_scale_input(obs[i], observed_frame_num)
+        loc_scale_input.append(loc_scale_input_)
 
-    for data_idx in range(preds.shape[0]):
-        clusters[idx[data_idx]].append(preds[data_idx,:]);
+    loc_scale_input = np.vstack(loc_scale_input)
 
-    cluster_means = [];
-    for c_idx in range(n_clusters):
-        cluster_means.append( np.mean( np.array(clusters[c_idx]), axis = 0) );
+    return loc_scale_input
 
-    return clusters
+def get_output(pred,predicting_frame_num):
+
+    output = []
+    for i in range(len(pred)):
+        output_ = location_scale_output(pred[i], predicting_frame_num)
+        output.append(output_)
+
+    output = np.vstack(output)
+
+    return output
+
+def get_raw_data(path,observed_frame_num,predicting_frame_num):
+    total_obs = []
+    total_pred = []
+    paths = []
+
+    for file in glob.glob(path + "*.csv"):
+        raw_data, numPeds = preprocess(file)
+        data = get_traj_like(raw_data, numPeds)
+        obs, pred = get_obs_pred_like(data, observed_frame_num, predicting_frame_num)
+
+        paths.append(file)
+        total_obs.append(obs)
+        total_pred.append(pred)
+
+    return total_obs, total_pred, paths
+
+def km_cluster(samples):
+
+    #Input N samples of shape N x 4
+
+    kmeans = KMeans(n_clusters=5).fit(samples)
+    centroids = kmeans.cluster_centers_
+    labels = kmeans.labels_
+
+    return centroids, labels
+
 
 def bbox_iou(bbox_pred, bbox_gt):
 
@@ -452,3 +486,74 @@ def bbox_iou(bbox_pred, bbox_gt):
         av_iou = np.mean(iou_)
 
     return av_iou
+
+
+#Calculate mean squared error for the midpoint of the bounding boxes
+def calc_mse(bbox_pred, bbox_gt):
+
+    #metric relative to 1280x720 resolution
+    rel_x = 1280
+    rel_y = 720
+
+    mse_ = []
+
+    #for multiple predictions
+    if len(bbox_pred.shape) > 3:
+
+        for i in range(bbox_pred.shape[0]):
+            best_mse = 999999
+            for j in range(bbox_pred.shape[1]):
+
+                #get midpoint x,y position of the bounding box
+                outputs_x = np.array([bbox_pred[i, j, :, 0] + bbox_pred[i, j, :, 2]]) / 2
+                outputs_x *= rel_x
+                outputs_y = np.array([bbox_pred[i, j, :, 1] + bbox_pred[i, j, :, 3]]) / 2
+                outputs_y *= rel_y
+
+                targets_x = np.array([bbox_gt[i, j, :, 0] + bbox_gt[i, j, :, 2]]) / 2
+                targets_x *= rel_x
+                targets_y = np.array([bbox_gt[i, j, :, 1] + bbox_gt[i, j, :, 3]]) / 2
+                targets_y *= rel_y
+
+                #calculate mean squared error
+                mse_x = np.mean((outputs_x - targets_x) * (outputs_x - targets_x))
+                mse_y = np.mean((outputs_y - targets_y) * (outputs_y - targets_y))
+                mse = mse_x + mse_y
+
+                if mse < best_mse:
+                    best_mse = mse
+
+            mse_.append(best_mse)
+
+        av_mse = np.mean(mse_)
+
+        return av_mse
+
+
+    #for single prediction
+    else:
+
+        for i in range(bbox_pred.shape[0]):
+            # get midpoint x,y position of the bounding box
+            outputs_x = np.array([bbox_pred[i, :, 0] + bbox_pred[i, :, 2]]) / 2
+            outputs_x *= rel_x
+            outputs_y = np.array([bbox_pred[i, :, 1] + bbox_pred[i, :, 3]]) / 2
+            outputs_y *= rel_y
+
+            targets_x = np.array([bbox_gt[i, :, 0] + bbox_gt[i, :, 2]]) / 2
+            targets_x *= rel_x
+            targets_y = np.array([bbox_gt[i, :, 1] + bbox_gt[i, :, 3]]) / 2
+            targets_y *= rel_y
+
+            # calculate mean squared error
+            mse_x = np.mean((outputs_x - targets_x) * (outputs_x - targets_x))
+            mse_y = np.mean((outputs_y - targets_y) * (outputs_y - targets_y))
+            mse = mse_x + mse_y
+
+            mse_.append(mse)
+
+        av_mse = np.mean(mse_)
+
+        return av_mse
+
+

@@ -6,7 +6,9 @@ from keras.models import Model
 import tensorflow as tf
 from scipy.misc import imresize
 import cv2
+from scipy.signal import medfilt2d
 
+#Extracts (local) optical flow from the pedestrian bounding boxes using ROI pooling
 def get_optical_flow(model, obs, paths, path_to_images):
 
     #Define ROI Pooling
@@ -95,3 +97,79 @@ def get_optical_flow(model, obs, paths, path_to_images):
     roi_final = np.reshape(roi_final, [len(roi_final), obs[0].shape[1], feature_size])
 
     return roi_final
+
+
+#Exctracts (global) optical flow for each pixel to represent ego-motion
+def get_optical_flow_scene(model, obs, paths, path_to_images):
+
+    observed_frames_num = obs[0].shape[1]
+
+    #3x4 grids for x and y directions = 24 dimensions
+    optic_flow_feature_size = 24
+
+    flow = np.zeros((observed_frames_num, optic_flow_feature_size))
+
+    final_flow = []
+
+    for i in range(len(obs)):
+        for person in range(obs[i].shape[0]):
+
+            for frame in range(observed_frames_num-1):
+
+                img_pairs = []
+                image1 = imread(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(int(obs[i][person][frame][1])) + ".png")
+                image2 = imread(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(int(obs[i][person][frame+1][1])) + ".png")
+                height_, width_, _ = image2.shape
+                print(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(int(obs[i][person][frame][1])) + ".png")
+
+                img_pairs.append((image1, image2))
+
+                #calculate optical flow
+                pred_labels = model.predict_from_img_pairs(img_pairs, batch_size=1, verbose=False)
+
+                #Optical flow in x direction
+                opt_flow_x = pred_labels[0][:, :, 0]
+
+                opt_flow_x = cv2.resize(opt_flow_x, (1600, 900))
+                opt_flow_x = medfilt2d(opt_flow_x, 5)
+
+
+                #reshape optical flow into 4x3 grids
+                nrows = 300
+                ncols = 400
+                h, w = opt_flow_x.shape
+                grids = opt_flow_x.reshape(h//nrows, nrows, -1, ncols).swapaxes(1,2).reshape(-1, nrows, ncols)
+
+                #calculate x-direction mean flow  in every grid
+                m_x = np.mean(grids, axis=(1, 2))
+
+                # Optical flow in y direction
+                opt_flow_y = pred_labels[0][:, :, 1]
+
+                opt_flow_y = cv2.resize(opt_flow_y, (1600, 900))
+                opt_flow_y = medfilt2d(opt_flow_y, 5)
+
+                grids = opt_flow_y.reshape(h//nrows, nrows, -1, ncols).swapaxes(1,2).reshape(-1, nrows, ncols)
+
+                #calculate y-direction mean flow in every grid
+                m_y = np.mean(grids, axis=(1, 2))
+
+                #concatenate mean x and mean y flows into one 24D vector
+                current_flow = np.hstack((m_x, m_y))
+                print(current_flow)
+
+                flow[frame] = current_flow
+
+            # extrapolate optical flow for last frame
+            last_flow = np.array([[flow[observed_frames_num - 3]], [flow[observed_frames_num - 2]]])
+            diff = np.diff(last_flow, axis=0)
+            flow[observed_frames_num - 1] = flow[observed_frames_num - 2] + diff
+
+            final_flow.append(flow)
+
+    final_flow = np.reshape(final_flow, [len(final_flow), obs[0].shape[1], optic_flow_feature_size])
+
+    return final_flow
+
+
+

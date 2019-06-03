@@ -3,7 +3,9 @@ import numpy as np
 
 
 def config_reader():
-    config = ConfigObj('./PoseEstimation/keras_Realtime_Multi-Person_Pose_Estimation-master/config')
+    #config = ConfigObj('../../../PoseEstimation/keras_Realtime_Multi-Person_Pose_Estimation-master/config')
+    #config = ConfigObj('./PoseEstimation/keras_Realtime_Multi-Person_Pose_Estimation-master/config')
+    config = ConfigObj('config')
 
     param = config['param']
     model_id = param['modelID']

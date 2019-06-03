@@ -1,28 +1,35 @@
-LSTM encoder-decoder (1000 epochs)
+GRU encoder-decoder (1000 epochs)
 
-Location-scale 
-Location-scale + Pedestrian appearance
-Location-scale + Pedestrian appearance + Pedestrian pose
+RLS   mIoU, 983 MSE (1 sample)
+RLS   mIoU,  798 MSE (20 samples)
 
-BMS Model (1 sample, 1000 epochs)
+Linear Model
 
-Location-scale 
-Location-scale + Pedestrian appearance 
-Location-scale + Pedestrian appearance + Pedestrian pose  
+RLS    mIoU,   MSE
 
-BMS Model (10 samples, 1000 epochs)
+Constant Velocity Model
 
-Location-scale 
-Location-scale + Pedestrian appearance
-Location-scale + Pedestrian appearance + Pedestrian pose
+RLS  mIoU,  MSE
 
-BMS Model (20 samples, 1000 epochs)
 
-Location-scale 0.56
-Location-scale + Pedestrian appearance 0.584
-Location-scale + Pedestrian appearance + Pedestrian pose 0.586 
-Location-scale + Pedestrian appearance + Pedestrian pose + Scene context 0.593
+CVAE Model (1000 epochs, latent_dim 24, conditioned on x and y, 1 train sample)
+
+RLS   mIoU, 691, 687,687,691,695 MSE (1 sample)
+RLS   mIoU, 542, 541, 539, 544, 542  MSE (20 samples)
+RLS + PP mIoU, 735, 760,767, 765 MSE (1 sample)
+RLS + PP mIoU, 612, 611, 614, 609, 614  MSE (20 samples)
+
+
 
 PI - person interaction
-OF - opticall flow
+OF - optical flow (roi person)
+EM - ego motion (optical flow scene 4x3 grids)
 SC - scene context
+ALS - absolute location scale
+RLS - relative location scale (relative to the last observed frame)
+PA - person appearance
+PP - person pose
+
+
+
+
