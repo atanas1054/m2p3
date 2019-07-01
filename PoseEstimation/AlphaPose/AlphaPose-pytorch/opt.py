@@ -1,5 +1,6 @@
 import argparse
 import torch
+import ast
 
 parser = argparse.ArgumentParser(description='PyTorch AlphaPose Training')
 
@@ -38,7 +39,7 @@ parser.add_argument('--nStack', default=4, type=int,
                     help='Number of hourglasses to stack')
 
 "----------------------------- Hyperparameter options -----------------------------"
-parser.add_argument('--fast_inference', default=True, type=bool,
+parser.add_argument('--fast_inference', default=False, type=ast.literal_eval,
                     help='Fast inference')
 parser.add_argument('--use_pyranet', default=True, type=bool,
                     help='use pyranet')
@@ -112,7 +113,7 @@ parser.add_argument('--indir', dest='inputpath',
 parser.add_argument('--list', dest='inputlist',
                     help='image-list', default="")
 parser.add_argument('--mode', dest='mode',
-                    help='detection mode, fast/normal/accurate', default="normal")
+                    help='detection mode, fast/normal/accurate', default="accurate")
 parser.add_argument('--outdir', dest='outputpath',
                     help='output-directory', default="./")
 parser.add_argument('--inp_dim', dest='inp_dim', type=str, default='608',

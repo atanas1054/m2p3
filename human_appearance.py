@@ -44,7 +44,7 @@ from fn import getTime
 
 from pPose_nms import pose_nms, write_json
 
-#OpenPose
+#Mask-RCNN
 def get_person_appearance(model, obs, paths, path_to_images):
 
     #14x14 = 196 sized flattened feature vector
@@ -195,57 +195,130 @@ def get_person_pose(model, params, model_params, obs, paths, path_to_images):
 def get_person_pose_(obs, paths, path_to_images):
     count = 0
     output = './PoseEstimation/AlphaPose/AlphaPose-pytorch/examples/demo/'
-    #17 2D human joints
-    feature_size = 34
+    #17 2D human joints with confidence score
+    #feature_size = 17*3
+
+    #10 angles
+    feature_size = 10
 
     #extract people from data
     for i in range(len(obs)):
         for person in range(obs[i].shape[0]):
             for frame in range(obs[i].shape[1]):
                 count += 1
-                image = cv2.imread(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(
-                     int(obs[i][person][frame][1])) + ".png")
+                #image = cv2.imread(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(
+                     #int(obs[i][person][frame][1])) + ".png")
 
                 print(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(
                      int(obs[i][person][frame][1])) + ".png")
                 #
-                height_, width_, _ = image.shape
+                #height_, width_, _ = image.shape
                 #
-                x1 = int(obs[i][person][frame][2] * width_)
-                y1 = int(obs[i][person][frame][3] * height_)
-                x2 = int(obs[i][person][frame][2] * width_) + int(obs[i][person][frame][4] * width_)
-                y2 = int(obs[i][person][frame][3] * height_) + int(obs[i][person][frame][5] * height_)
+                #x1 = int(obs[i][person][frame][2] * width_)
+                #y1 = int(obs[i][person][frame][3] * height_)
+                #x2 = int(obs[i][person][frame][2] * width_) + int(obs[i][person][frame][4] * width_)
+                #y2 = int(obs[i][person][frame][3] * height_) + int(obs[i][person][frame][5] * height_)
                 #
-                cropped_person = image[y1:y2, x1:x2]
-                cropped_person = cv2.resize(cropped_person, (64, 128))
+                #cropped_person = image[y1:y2, x1:x2]
+                #cropped_person = cv2.resize(cropped_person, (64, 128))
 
                 outfile = output + '%s.jpg' % (str(count))
 
-                cv2.imwrite(outfile, cropped_person)
+                #cv2.imwrite(outfile, cropped_person)
 
 
     #extract poses for each person
     keypoints = demo.test()
 
-    #count = 33256
+    final_pose = np.zeros((count, feature_size))
 
-    final_pose = np.zeros((count,feature_size))
-
-    print(range(len(keypoints)))
+    #print(range(len(keypoints)))
     for i in range(len(keypoints)):
       img_name = keypoints[i].get('imgname')
       index = int(os.path.splitext(img_name)[0])
 
       if len(keypoints[i].get('result')) > 0:
+         angles = []
          pose = keypoints[i].get('result')[0].get('keypoints')
-         image = cv2.imread(output+img_name)
-         height_, width_, _ = image.shape
-         pose = pose.numpy()
+         #image = cv2.imread(output+img_name)
+         #height_, width_, _ = image.shape
+         #pose = pose.numpy()
          #normalize pose
-         pose[:,0] = pose[:, 0] / width_
-         pose[:,1] = pose[:, 1] / height_
-         pose = pose.flatten()
-         final_pose[index-1] = pose
+         #pose[:,0] = pose[:, 0] / width_
+         #pose[:,1] = pose[:, 1] / height_
+         #conf =  keypoints[i].get('result')[0].get('kp_score')
+         #conf = conf.numpy()
+         #conf = conf.flatten()
+
+         #pose = pose.flatten()
+         #pose = np.concatenate((pose, conf))
+
+         #final_pose[index-1] = pose
+
+         # {0, "Nose"},
+         # {1, "LEye"},
+         # {2, "REye"},
+         # {3, "LEar"},
+         # {4, "REar"},
+         # {5, "LShoulder"},
+         # {6, "RShoulder"},
+         # {7, "LElbow"},
+         # {8, "RElbow"},
+         # {9, "LWrist"},
+         # {10, "RWrist"},
+         # {11, "LHip"},
+         # {12, "RHip"},
+         # {13, "LKnee"},
+         # {14, "Rknee"},
+         # {15, "LAnkle"},
+         # {16, "RAnkle"}
+
+         #calculate angles between body parts
+
+         angle_between_nodes = [(5, 7), (6, 8), (7, 9), (8, 10), (11, 13), (13, 15), (12, 14), (14, 16)]
+
+         for pair in angle_between_nodes:
+             node1_x = pose[pair[0], 0]
+             node1_y = pose[pair[0], 1]
+             node2_x = pose[pair[1], 0]
+             node2_y = pose[pair[1], 1]
+             vector = (node2_x - node1_x, node2_y - node1_y)
+
+             dot_product = np.dot(vector, (1, 0))
+             norm = np.linalg.norm(vector)
+             angle = np.arccos(dot_product / norm)
+
+             if np.isnan(angle):
+                 angle = 0
+
+             angles.append(angle)
+
+         angle_between_limbs = [((11, 15), (12, 16)), ((5, 9), (6, 10))]
+         for limb_pair in angle_between_limbs:
+             node1_x = pose[limb_pair[0][0], 0]
+             node1_y = pose[limb_pair[0][0], 1]
+             node2_x = pose[limb_pair[0][1], 0]
+             node2_y = pose[limb_pair[0][1], 1]
+             vector1 = (node2_x - node1_x, node2_y - node1_y)
+
+             node3_x = pose[limb_pair[1][0], 0]
+             node3_y = pose[limb_pair[1][0], 1]
+             node4_x = pose[limb_pair[1][1], 0]
+             node4_y = pose[limb_pair[1][1], 1]
+             vector2 = (node4_x - node3_x, node4_y - node3_y)
+
+             dot_product = np.dot(vector1, vector2)
+             norm1 = np.linalg.norm(vector1)
+             norm2 = np.linalg.norm(vector2)
+             angle = np.arccos(dot_product / norm1 / norm2)
+
+             if np.isnan(angle):
+                angle = 0
+
+             angles.append(angle)
+
+
+         final_pose[index - 1] = angles
 
     final_pose = np.reshape(final_pose, [int(count / obs[0].shape[1]), obs[0].shape[1], feature_size])
 

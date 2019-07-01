@@ -7,6 +7,17 @@ import tensorflow as tf
 from scipy.misc import imresize
 import cv2
 from scipy.signal import medfilt2d
+import scipy.misc
+import tensorflow as tf
+import sys
+
+#SfMLearner
+#SfMdir = os.path.abspath("./OpticalFlow/SfMLearner-master/")
+
+#sys.path.append(SfMdir)  # To find local version of the library
+
+#from SfMLearner import SfMLearner
+#from kitti_eval.pose_evaluation_utils import *
 
 #Extracts (local) optical flow from the pedestrian bounding boxes using ROI pooling
 def get_optical_flow(model, obs, paths, path_to_images):
@@ -55,6 +66,7 @@ def get_optical_flow(model, obs, paths, path_to_images):
                 x2 = obs[i][person][frame][2] + obs[i][person][frame][4]
                 y2 = obs[i][person][frame][3] + obs[i][person][frame][5]
 
+
                 #Optical flow in x and y directions
                 opt_flow_x = pred_labels[0][:, :, 0]
                 if opt_flow_x.shape[0] != 1080 or opt_flow_x.shape[1] != 1920:
@@ -69,7 +81,7 @@ def get_optical_flow(model, obs, paths, path_to_images):
                 opt_flow_y = np.reshape(opt_flow_y, (1, img_height, img_width, 1))
 
                 rois = [x1, y1, x2, y2]
-                rois = np.reshape(rois, (1, num_rois, 4))
+                rois = np.reshape(rois, (1, n_rois, 4))
 
                 #Get roi vectors in x and y
                 with tf.Session() as session:
@@ -85,6 +97,7 @@ def get_optical_flow(model, obs, paths, path_to_images):
                 #get a ROI vector of size 50 (5x5x2 for x and y)
                 roi_person[frame] = roi_vector.flatten()
                 print(i, " person: ", person, " frame: ", frame)
+
 
             #extrapolate optical flow for last frame
             last = np.array([[roi_person[observed_frames_num-3]], [roi_person[observed_frames_num-2]]])
@@ -156,7 +169,6 @@ def get_optical_flow_scene(model, obs, paths, path_to_images):
 
                 #concatenate mean x and mean y flows into one 24D vector
                 current_flow = np.hstack((m_x, m_y))
-                print(current_flow)
 
                 flow[frame] = current_flow
 
@@ -173,3 +185,86 @@ def get_optical_flow_scene(model, obs, paths, path_to_images):
 
 
 
+#https://github.com/tinghuiz/SfMLearner extract ego pose
+
+def get_ego_pose(obs, paths, path_to_images):
+
+    #model takes 5 frames as input
+    seq_length = 5
+
+    img_height = 128
+    img_width = 416
+    #camera tx, ty, tz, rx, ry, rz
+    pose_features = 6
+    max_src_offset = (seq_length - 1) // 2
+
+    observed_frames_num = obs[0].shape[1]
+    ckpt_file = "./OpticalFlow/SfMLearner-master/models/kitti_pose_model/model-100280"
+    total_pose = []
+    #initiate SfMlearner
+    sfm = SfMLearner()
+    sfm.setup_inference(img_height,
+                        img_width,
+                        'pose',
+                        seq_length)
+    saver = tf.train.Saver([var for var in tf.trainable_variables()])
+
+    with tf.Session() as sess:
+        saver.restore(sess, ckpt_file)
+
+        for i in range(len(obs)):
+                for person in range(obs[i].shape[0]):
+                    pose_first_half = []
+                    pose_second_half = []
+                    for frame in range(observed_frames_num):
+
+                        img = scipy.misc.imread(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(
+                            int(obs[i][person][frame][1])) + ".png")
+                        print(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(
+                            int(obs[i][person][frame][1])) + ".png")
+                        img = scipy.misc.imresize(img, (img_height, img_width))
+
+                        if frame == seq_length or frame == 0:
+
+                            if frame == seq_length:
+                                img = scipy.misc.imread(
+                                    path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(
+                                        int(obs[i][person][frame-1][1])) + ".png")
+                                img = scipy.misc.imresize(img, (img_height, img_width))
+                            image_seq = img
+                            #print(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0] + "/" + str(
+                                #int(obs[i][person][frame][1])) + ".png")
+
+                        else:
+                            image_seq = np.hstack((image_seq, img))
+
+                        if image_seq.shape[1] == img_width*seq_length:
+                            pred = sfm.inference(image_seq[None, :, :, :], sess, mode='pose')
+                            pred_poses = pred['pose'][0]
+                            # Insert the target pose [0, 0, 0, 0, 0, 0]
+                            pred_poses = np.insert(pred_poses, max_src_offset, np.zeros((1, 6)), axis=0)
+
+                            # First frame as the origin
+                            first_pose = pose_vec_to_mat(pred_poses[0])
+                            for p in range(seq_length):
+                                this_pose = pose_vec_to_mat(pred_poses[p])
+                                this_pose = np.dot(first_pose, np.linalg.inv(this_pose))
+                                tx = this_pose[0, 3]
+                                ty = this_pose[1, 3]
+                                tz = this_pose[2, 3]
+                                rot = this_pose[:3, :3]
+                                rz, ry, rx = mat2euler(rot)
+                                pose= [tx, ty, tz, rx, ry, rz]
+                                if frame <= seq_length:
+                                    pose_first_half.append(pose)
+                                else:
+                                    pose = [tx + pose_first_half[seq_length-1][0], ty + pose_first_half[seq_length-1][1],
+                                            tz + pose_first_half[seq_length-1][2], rx + pose_first_half[seq_length-1][3],
+                                            ry + pose_first_half[seq_length-1][4], rz + pose_first_half[seq_length-1][5]]
+                                    pose_second_half.append(pose)
+                    total_pose_ = np.concatenate((pose_first_half, pose_second_half), axis=0)
+                    total_pose.append(total_pose_)
+
+    final_pose = np.reshape(total_pose, [len(total_pose), obs[0].shape[1], pose_features])
+
+    return final_pose

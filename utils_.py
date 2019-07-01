@@ -10,6 +10,7 @@ from tensorflow.keras.layers import Layer
 
 from keras.engine.topology import Layer
 import keras.backend as K
+import math
 
 
 class ROIPoolingLayer(Layer):
@@ -113,9 +114,9 @@ class ROIPoolingLayer(Layer):
             for j in range(pooled_width)]
             for i in range(pooled_height)]
 
-        # take the maximum of each area and stack the result
+        # take the average of each area and stack the result
         def pool_area(x):
-            return tf.reduce_max(region[x[0]:x[2], x[1]:x[3], :], axis=[0, 1])
+            return tf.reduce_mean(region[x[0]:x[2], x[1]:x[3], :], axis=[0, 1])
 
         pooled_features = tf.stack([[pool_area(x) for x in row] for row in areas])
 
@@ -280,7 +281,7 @@ def get_traj_like(data, numPeds):
     for pedIndex in numPeds:
         traj = []
         for i in range(len(data[1])):
-            #and data[5][i] > 0.05 and data[4][i] * 1.77 / data[5][i] < 0.7
+            # and data[0][i] % 12 == 0
             if data[1][i] == pedIndex:
                 traj.append([data[1][i], data[0][i], data[2][i], data[3][i], data[4][i], data[5][i]])
         traj = np.reshape(traj, [-1, 6])
@@ -555,5 +556,161 @@ def calc_mse(bbox_pred, bbox_gt):
         av_mse = np.mean(mse_)
 
         return av_mse
+
+
+def calc_ade(bbox_pred, bbox_gt):
+    # metric relative to 1920x1080 resolution
+    rel_x = 1920
+    rel_y = 1080
+
+    ade_ = []
+
+
+    # for multiple predictions
+    if len(bbox_pred.shape) > 3:
+
+        for i in range(bbox_pred.shape[0]):
+            best_ade = 999999
+            for j in range(bbox_pred.shape[1]):
+                ade_temp = []
+                # get midpoint x,y position of the bounding box
+                outputs_x = np.array([bbox_pred[i, j, :, 0] + bbox_pred[i, j, :, 2]]) / 2
+                outputs_x *= rel_x
+                outputs_y = np.array([bbox_pred[i, j, :, 1] + bbox_pred[i, j, :, 3]]) / 2
+                outputs_y *= rel_y
+
+                targets_x = np.array([bbox_gt[i, j, :, 0] + bbox_gt[i, j, :, 2]]) / 2
+                targets_x *= rel_x
+                targets_y = np.array([bbox_gt[i, j, :, 1] + bbox_gt[i, j, :, 3]]) / 2
+                targets_y *= rel_y
+
+                #get midpoint foot position of the bounding box
+                # outputs_x = np.array([bbox_pred[i, j, :, 0] + bbox_pred[i, j, :, 2]]) / 2
+                # outputs_x *= rel_x
+                # outputs_y = np.array([bbox_pred[i, j, :, 1] + bbox_pred[i, j, :, 3]])
+                # outputs_y *= rel_y
+                #
+                # targets_x = np.array([bbox_gt[i, j, :, 0] + bbox_gt[i, j, :, 2]]) / 2
+                # targets_x *= rel_x
+                # targets_y = np.array([bbox_gt[i, j, :, 1] + bbox_gt[i, j, :, 3]])
+                # targets_y *= rel_y
+
+                # calculate displacement error (DE)
+                for k in range(bbox_pred.shape[2]):
+                    ade = math.sqrt((outputs_x[0][k] - targets_x[0][k])**2 + (outputs_y[0][k]-targets_y[0][k])**2)
+                    ade_temp.append(ade)
+
+                if np.mean(ade_temp) < best_ade:
+                    best_ade = np.mean(ade_temp)
+
+            ade_.append(best_ade)
+
+        av_ade = np.mean(ade_)
+
+        return av_ade
+
+
+    # for single prediction
+    else:
+
+        for i in range(bbox_pred.shape[0]):
+            # get midpoint x,y position of the bounding box
+            outputs_x = np.array([bbox_pred[i, :, 0] + bbox_pred[i, :, 2]]) / 2
+            outputs_x *= rel_x
+            outputs_y = np.array([bbox_pred[i, :, 1] + bbox_pred[i, :, 3]]) / 2
+            outputs_y *= rel_y
+
+            targets_x = np.array([bbox_gt[i, :, 0] + bbox_gt[i, :, 2]]) / 2
+            targets_x *= rel_x
+            targets_y = np.array([bbox_gt[i, :, 1] + bbox_gt[i, :, 3]]) / 2
+            targets_y *= rel_y
+
+            # get midpoint foot position of the bounding box
+            # outputs_x = np.array([bbox_pred[i, :, 0] + bbox_pred[i, :, 2]]) / 2
+            # outputs_x *= rel_x
+            # outputs_y = np.array([bbox_pred[i, :, 1] + bbox_pred[i, :, 3]])
+            # outputs_y *= rel_y
+            #
+            # targets_x = np.array([bbox_gt[i, :, 0] + bbox_gt[i, :, 2]]) / 2
+            # targets_x *= rel_x
+            # targets_y = np.array([bbox_gt[i, :, 1] + bbox_gt[i, :, 3]])
+            # targets_y *= rel_y
+
+            # calculate displacement error (DE)
+            for k in range(bbox_pred.shape[1]):
+                ade = math.sqrt((outputs_x[0][k] - targets_x[0][k])**2 + (outputs_y[0][k]-targets_y[0][k])**2)
+                ade_.append(ade)
+
+        #calculate average displacement error (ADE)
+        av_ade = np.mean(ade_)
+
+        return av_ade
+
+def calc_fde(bbox_pred, bbox_gt):
+    # metric relative to 1280x720 resolution
+    rel_x = 1920
+    rel_y = 1080
+
+    fde_ = []
+
+
+    # for multiple predictions
+    if len(bbox_pred.shape) > 3:
+
+        final_frame = bbox_pred.shape[2]-1
+
+        for i in range(bbox_pred.shape[0]):
+            best_fde = 999999
+            for j in range(bbox_pred.shape[1]):
+
+                # get midpoint x,y position of the bounding box
+                outputs_x = np.array([bbox_pred[i, j, final_frame, 0] + bbox_pred[i, j, final_frame, 2]]) / 2
+                outputs_x *= rel_x
+                outputs_y = np.array([bbox_pred[i, j, final_frame, 1] + bbox_pred[i, j, final_frame, 3]]) / 2
+                outputs_y *= rel_y
+
+                targets_x = np.array([bbox_gt[i, j, final_frame, 0] + bbox_gt[i, j, final_frame, 2]]) / 2
+                targets_x *= rel_x
+                targets_y = np.array([bbox_gt[i, j, final_frame, 1] + bbox_gt[i, j, final_frame, 3]]) / 2
+                targets_y *= rel_y
+
+                # calculate displacement error (DE)
+
+                fde = math.sqrt((outputs_x - targets_x)**2 + (outputs_y - targets_y)**2)
+
+                if fde < best_fde:
+                    best_fde = fde
+
+            fde_.append(best_fde)
+
+        av_fde = np.mean(fde_)
+
+        return av_fde
+
+
+    # for single prediction
+    else:
+        final_frame = bbox_pred.shape[1] - 1
+
+        for i in range(bbox_pred.shape[0]):
+            # get midpoint x,y position of the bounding box
+            outputs_x = np.array([bbox_pred[i, final_frame, 0] + bbox_pred[i, final_frame, 2]]) / 2
+            outputs_x *= rel_x
+            outputs_y = np.array([bbox_pred[i, final_frame, 1] + bbox_pred[i, final_frame, 3]]) / 2
+            outputs_y *= rel_y
+
+            targets_x = np.array([bbox_gt[i, final_frame, 0] + bbox_gt[i, final_frame, 2]]) / 2
+            targets_x *= rel_x
+            targets_y = np.array([bbox_gt[i, final_frame, 1] + bbox_gt[i, final_frame, 3]]) / 2
+            targets_y *= rel_y
+
+            # calculate displacement error (DE)
+            fde = math.sqrt((outputs_x - targets_x)**2 + (outputs_y - targets_y)**2)
+            fde_.append(fde)
+
+        #calculate average displacement error (ADE)
+        av_fde = np.mean(fde_)
+
+        return av_fde
 
 

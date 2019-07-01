@@ -21,6 +21,8 @@ def visualize_result(pred, obs_gt, gt, paths, path_to_images):
     #probabilistic prediction
     if len(pred.shape)>3:
         for i in range(len(gt)):
+            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+            out = cv2.VideoWriter(save_dir + str(i) + '.avi', fourcc, 30, (1280, 720))
             # print(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0])
             for person in range(gt[i].shape[0]):
 
@@ -63,6 +65,7 @@ def visualize_result(pred, obs_gt, gt, paths, path_to_images):
                     #print(samples[f])
 
                 colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
+                locations = [[0, 100], [0, 200], [0, 300] ]
                 # cluster possible directions
                 centroids, labels = kmeans_cluster(samples)
                 labels = list(labels)
@@ -83,7 +86,7 @@ def visualize_result(pred, obs_gt, gt, paths, path_to_images):
 
                     p = labels.count(s) / (pred[i].shape[0])
                     p = p * 100
-                    cv2.putText(img, str(int(p)) + '%', (int(centroids[s][0]), int(centroids[s][1])), 0, 5e-3 * 200, (255, 255, 255), 1)
+                    cv2.putText(img, str(int(p)) + '%', tuple(locations[s]), 0, 5e-3 * 200, tuple(colors[s]), 1)
 
                 for sample in range(pred[i].shape[0]):
                     for frame in range(gt[i].shape[1]):
@@ -112,14 +115,19 @@ def visualize_result(pred, obs_gt, gt, paths, path_to_images):
 
                 heatmap = cv2.normalize(heatmap, None, 255, 0, cv2.NORM_MINMAX, cv2.CV_8UC1)
 
-                cv2.imshow('HeatMap', heatmap)
+                #cv2.imshow('HeatMap', heatmap)
                 cv2.imshow('ImageWindow', img)
+                #out.write(img)
                 cv2.waitKey()
                 pred_count += 1
+
+            #out.release()
 
     #single point prediction
     else:
         for i in range(len(gt)):
+            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+            out = cv2.VideoWriter(save_dir+str(i)+'.avi', fourcc, 30, (1280, 720))
             #print(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0])
             for person in range(gt[i].shape[0]):
                 gt_obs = obs_gt[i][person]
@@ -150,8 +158,8 @@ def visualize_result(pred, obs_gt, gt, paths, path_to_images):
                                       (int(obs_gt[i][person][p][2] * width_) + int(obs_gt[i][person][p][4] * width_)),
                                       (int(obs_gt[i][person][p][3] * height_) + int(
                                           obs_gt[i][person][p][5] * height_))), (255, 255, 255), 1)
-                    cv2.imwrite(save_dir + str(i) + '_' + str(person) + '_'+ str(int(obs_gt[i][person][p][1])) + '.jpg', img)
-
+                    #cv2.imwrite(save_dir + str(i) + '_' + str(person) + '_'+ str(int(obs_gt[i][person][p][1])) + '.jpg', img)
+                    out.write(img)
 
                 #Prediction
                 # for p in range(gt[i].shape[1]):
@@ -194,8 +202,8 @@ def visualize_result(pred, obs_gt, gt, paths, path_to_images):
 
                     #cv2.imshow('ImageWindow', img)
                     #cv2.waitKey()
-                    cv2.imwrite(save_dir + str(i) + '_' + str(person) + '_' + str(int(gt[i][person][p][1])) + '.jpg', img)
-
+                    #cv2.imwrite(save_dir + str(i) + '_' + str(person) + '_' + str(int(gt[i][person][p][1])) + '.jpg', img)
+                    out.write(img)
 
                 for frame in range(gt[i].shape[1]) :
 
@@ -210,6 +218,7 @@ def visualize_result(pred, obs_gt, gt, paths, path_to_images):
                     (int(pred[pred_count][frame][1] * height_) + int(pred[pred_count][frame][3] * height_))), (0, 255, 0), 1)
 
                 pred_count += 1
+            out.release()
 
 
 

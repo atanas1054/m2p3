@@ -39,7 +39,7 @@
 
 # Milestone 2 (M2)
   
-  End of June 2019
+  We demonstrate Milestone 2 by showing how to train/test a model on the JAAD dataset.
 
 # Milestone 3 (M3) 
   
