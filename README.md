@@ -39,7 +39,21 @@
 
 # Milestone 2 (M2)
   
-  We demonstrate Milestone 2 by showing how to train/test a model on the JAAD dataset.
+  We demonstrate Milestone 2 by showing how to train/test a model on the JAAD dataset. The model is currently using just the past bounding boxes of the pedestrians to make a prediction. The model observes 0.5 seconds in the past and predicts 1 second into the future.
+
+  1. To train a model run:
+  
+  ```
+   python m3p.py --train
+  ```
+   This will train a model with the default hyperparameters and will save the model in the models/ folder.
+  
+  2. To test and visualize a model run:
+
+  ```
+   python m3p.py --test --model path_to_model_file -vis
+  ```
+   This will visualize the predictions in the results/ folder. You can also use the --num_samples parameter to specify how many predictions the model will output. If --num_samples > 1 the predictions will be clustered into 3 trajectories (using k-means), assigning a probability to each.
 
 # Milestone 3 (M3) 
   
