@@ -4,7 +4,9 @@ import numpy as np
 import random
 import skimage.io
 from scipy import stats
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
+import time
 import sys
 from utils_ import *
 from visualize_result import *
@@ -25,7 +27,9 @@ from keras import backend as K
 from tensorflow import convert_to_tensor
 import tensorflow as tf
 import argparse
-
+from tslearn.clustering import TimeSeriesKMeans
+from tslearn.utils import to_time_series_dataset
+from tqdm import tqdm
 
 #TRAIN/TEST images and annotations JAAD dataset
 train_images = '/media/atanas/New Volume/M3P/Datasets/JAAD/JAAD_clips/train_frames/'
@@ -178,58 +182,73 @@ def test(model, num_samples):
 
 
     #generate num_samples ammount of samples (predictions)
+
     for sample in range(num_samples):
 
-        dummy_y = np.zeros((y_batch_test.shape[0] * test_samples, predicting_frame_num, 4)).astype(np.float32)
+        dummy_y = np.zeros((y_batch_test.shape[0], predicting_frame_num, 4)).astype(np.float32)
 
-        preds = model.predict([x_batch_test, dummy_y], batch_size=batch_size * test_samples, verbose=1)
+        preds = model.predict([x_batch_test, dummy_y], batch_size=y_batch_test.shape[0], verbose=0)
+
+
 
         # add last observed frame to the relative output to get absolute output
         preds = preds + x_t
         final_preds[:,sample,:,:] = preds
         final_gt[:,sample,:,:] = gt
 
-    #cluster predictions and return cluster with highest probability
-    # final_preds_ = []
-    # for p in range(preds.shape[0]):
-    #     for f in range(predicting_frame_num):
-    #         samples = np.zeros((num_samples * test_samples, 4))
-    #         for sample in range(num_samples * test_samples):
-    #             samples[sample] = final_preds[p][sample][f][:]
-    #         #centroids, labels = km_cluster(samples)
-    #         #labels = list(labels)
-    #         #weights = [labels.count(x) / (num_samples*test_samples) for x in labels]
-    #
-    #         #mode = max(set(labels), key=labels.count)
-    #
-    #         #pred = centroids[mode]
-    #         #pred = samples[1]
-    #         #pred = np.average(samples, axis=0, weights = weights)
-    #         pred = np.mean(samples,axis=0)
-    #         #print("SAMPLES: ", samples)
-    #         #print("PREDICTION: ",pred)
-    #         #print("GT: ", gt[p][f][:])
 
-            #final_preds_.append(pred)
 
     if num_samples == 1:
         final_preds = np.reshape(final_preds, [preds.shape[0], predicting_frame_num, 4])
         final_gt = np.reshape(final_gt, [preds.shape[0], predicting_frame_num, 4])
 
-    average_iou = bbox_iou(final_preds, final_gt)
+        average_iou = bbox_iou(final_preds, final_gt)
 
-    mse = calc_mse(final_preds, final_gt)
+        mse = calc_mse(final_preds, final_gt)
 
-    ade = calc_ade(final_preds, final_gt)
+        ade = calc_ade(final_preds, final_gt)
 
-    fde = calc_fde(final_preds, final_gt)
+        fde = calc_fde(final_preds, final_gt)
 
-    print("ADE: " + str(ade))
-    print("FDE: " + str(fde))
-    print("Average IoU: " + str(average_iou))
-    print("MSE: " + str(mse))
+        print("ADE: " + str(ade))
+        print("FDE: " + str(fde))
+        print("Average IoU: " + str(average_iou))
+        print("MSE: " + str(mse))
 
-    return final_preds
+        return final_preds, []
+
+    else:
+        # K-means clustering
+        clusters = 3
+        probs = np.zeros((y_batch_test.shape[0], clusters))
+        clustered_preds = np.zeros((y_batch_test.shape[0], clusters, predicting_frame_num, 4))
+        for s in tqdm(range(final_preds.shape[0])):
+            start = time.time()
+            X = to_time_series_dataset(final_preds[s])
+            km = TimeSeriesKMeans(n_clusters=clusters, metric="euclidean", verbose=False).fit(X)
+            counts = np.bincount(km.labels_)
+            counts = counts / num_samples
+            probs[s, :] = counts
+            clustered_preds[s, :, :, :] = km.cluster_centers_
+            end = time.time()
+            print((end - start) / y_batch_test.shape[0])
+        final_preds = clustered_preds
+        final_gt = final_gt[:, :clusters, :, :]
+
+        average_iou = bbox_iou(final_preds, final_gt)
+
+        mse = calc_mse(final_preds, final_gt)
+
+        ade = calc_ade(final_preds, final_gt)
+
+        fde = calc_fde(final_preds, final_gt)
+
+        print("ADE: " + str(ade))
+        print("FDE: " + str(fde))
+        print("Average IoU: " + str(average_iou))
+        print("MSE: " + str(mse))
+
+        return final_preds, probs
 
 
 
@@ -296,12 +315,12 @@ if __name__ == '__main__':
         model_path = args.model
         model = get_cvae_model((observed_frame_num, 4), (predicting_frame_num, 4), predicting_frame_num)
         model.load_weights(model_path)
-        predictions = test(model, num_samples)
+        predictions, probs = test(model, num_samples)
 
         #################################################################################
 
     if args.vis == True:
         ###################################VISUALIZATION#################################
-        visualize_result(predictions, obs_test, pred_test, test_paths, test_images)
+        visualize_result(predictions, probs, obs_test, pred_test, test_paths, test_images)
         ###########################################################################
 

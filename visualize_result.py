@@ -13,16 +13,18 @@ def kmeans_cluster(samples):
     return centroids, labels
 
 
-def visualize_result(pred, obs_gt, gt, paths, path_to_images):
+def visualize_result(pred, probs, obs_gt, gt, paths, path_to_images):
 
     pred_count = 0
     save_dir = 'results/'
+    colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
+    locations = [[0, 100], [0, 200], [0, 300]]
 
     #probabilistic prediction
     if len(pred.shape)>3:
         for i in range(len(gt)):
-            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-            out = cv2.VideoWriter(save_dir + str(i) + '.avi', fourcc, 30, (1280, 720))
+            #fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+            #out = cv2.VideoWriter(save_dir + str(i) + '.avi', fourcc, 30, (1280, 720))
             # print(path_to_images + os.path.splitext(os.path.basename(paths[i]))[0])
             for person in range(gt[i].shape[0]):
 
@@ -30,98 +32,26 @@ def visualize_result(pred, obs_gt, gt, paths, path_to_images):
                     int(gt[i][person][0][1])) + ".png")
                 height_, width_, _ = img.shape
 
-                #create empty heatmap for each person
-                heatmap = np.zeros_like(img[:, :, 0]).astype(np.float)
+                # selected pedestrian
+                cv2.rectangle(img, (int(gt[i][person][0][2] * width_), int(gt[i][person][0][3] * height_)),
+                              (
+                                  (int(gt[i][person][0][2] * width_) + int(gt[i][person][0][4] * width_)),
+                                  (int(gt[i][person][0][3] * height_) + int(
+                                      gt[i][person][0][5] * height_))), (255, 255, 255), 2)
 
-                #store all possible trajectories for each person
+                for s in range(pred.shape[1]):
+                    #draw probabilities
+                    cv2.putText(img, str(int(probs[pred_count][s]*100)) + '%', tuple(locations[s]), 0, 5e-3 * 200,
+                                tuple(colors[s]), 1)
+                    for frame in range(pred.shape[2]):
+                        cv2.circle(img, (int(pred[pred_count][s][frame][0] * width_ + pred[pred_count][s][frame][2] * width_),
+                                        int(pred[pred_count][s][frame][1] * height_ + pred[pred_count][s][frame][3] * height_)), 2, tuple(colors[s]), -1)
 
-                samples = np.zeros((pred[i].shape[0], 2))
-
-                #middle of the feet of the pedestiran
-                start_x = (int(gt[i][person][0][2] * width_) + int(int(gt[i][person][0][4] * width_) / 2))
-                start_y = (int(gt[i][person][0][3] * height_) + int(int(gt[i][person][0][5] * height_) / 2))
-
-                # record possible directions
-                for f in range(pred[i].shape[0]):
-                    #sample = []
-                    #for t in range(pred[i].shape[2]):
-                        #sample.append(int(pred[person][f][t][0] * width_) + int(
-                                      #pred[person][f][t][2] * width_)/2)
-                        #sample.append(int(pred[person][f][t][1] * height_) + int(
-                                      #pred[person][f][t][3] * height_))
-                    sample = [int(pred[pred_count][f][pred[i].shape[1] - 1][0] * width_) + int(
-                                      pred[pred_count][f][pred[i].shape[1] - 1][2] * width_) / 2,
-                                  int(pred[pred_count][f][pred[i].shape[1] - 1][1] * height_) + int(
-                                      pred[pred_count][f][pred[i].shape[1] - 1][3] * height_) / 2]
-
-                    #cv2.arrowedLine(img, (
-                        #int(pred[person][f][0][0] * width_) + int(pred[person][f][0][2] * width_),
-                        #int(pred[person][f][0][1] * height_) + int(pred[person][f][0][3] * height_)), (int(pred[person][f][pred[i].shape[2] - 1][0] * width_) + int(
-                                  #pred[person][f][pred[i].shape[2] - 1][2] * width_),
-                              #int(pred[person][f][pred[i].shape[2] - 1][1] * height_) + int(
-                                  #pred[person][f][pred[i].shape[2] - 1][3] * height_)),
-                                    #(255, 0, 0), 1)
-                    samples[f] = sample
-                    #print(samples[f])
-
-                colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
-                locations = [[0, 100], [0, 200], [0, 300] ]
-                # cluster possible directions
-                centroids, labels = kmeans_cluster(samples)
-                labels = list(labels)
-
-
-                for s in range(centroids.shape[0]):
-                    #direction = [int(centroids[s][2]) - int(centroids[s][0]),
-                                 #int(centroids[s][3]) - int(centroids[s][1])]
-
-
-                    cv2.arrowedLine(img,  (start_x,start_y), (int(centroids[s][0]), int(centroids[s][1])),
-                                    tuple(colors[s]), 2)
-
-
-                     #cv2.arrowedLine(img,   (
-                     #int(centroids[s][0]), int(centroids[s][1])), (int(centroids[s][2]), int(centroids[s][3])),
-                     #tuple(colors[s]), 1)
-
-                    p = labels.count(s) / (pred[i].shape[0])
-                    p = p * 100
-                    cv2.putText(img, str(int(p)) + '%', tuple(locations[s]), 0, 5e-3 * 200, tuple(colors[s]), 1)
-
-                for sample in range(pred[i].shape[0]):
-                    for frame in range(gt[i].shape[1]):
-                        # display ground truth
-                        cv2.rectangle(img, (int(gt[i][person][0][2] * width_), int(gt[i][person][0][3] * height_)),
-                                      (
-                                          (int(gt[i][person][0][2] * width_) + int(gt[i][person][0][4] * width_)),
-                                          (int(gt[i][person][0][3] * height_) + int(
-                                              gt[i][person][0][5] * height_))), (255, 0, 0), 1)
-
-                        # display prediction
-                        #cv2.rectangle(img,
-                                      #(int(pred[pred_count][sample][frame][0] * width_), int(pred[pred_count][sample][frame][1] * height_)),
-                                      #(
-                                         # (int(pred[pred_count][sample][frame][0] * width_) + int(
-                                           #   pred[pred_count][sample][frame][2] * width_)),
-                                         # (int(pred[pred_count][sample][frame][1] * height_) + int(
-                                            #  pred[pred_count][sample][frame][3] * height_))), (0, 255, 0), 1)
-
-                        #populate heatmap
-                       # heatmap[int(pred[pred_count][sample][frame][0] * width_):int(pred[pred_count][sample][frame][0] * width_) + int(pred[pred_count][sample][frame][2] * width_),
-                       # int(pred[pred_count][sample][frame][1] * height_):int(pred[pred_count][sample][frame][1] * height_) + int(pred[pred_count][sample][frame][3] * height_)] += 1
-                        frame = 14
-                        heatmap[int(pred[pred_count][sample][frame][1] * height_):int(pred[pred_count][sample][frame][1] * height_) + int(pred[pred_count][sample][frame][3] * height_),
-                        int(pred[pred_count][sample][frame][0] * width_):int(pred[pred_count][sample][frame][0] * width_) + int(pred[pred_count][sample][frame][2] * width_)] += 1
-
-                heatmap = cv2.normalize(heatmap, None, 255, 0, cv2.NORM_MINMAX, cv2.CV_8UC1)
-
-                #cv2.imshow('HeatMap', heatmap)
-                cv2.imshow('ImageWindow', img)
-                #out.write(img)
-                cv2.waitKey()
                 pred_count += 1
 
-            #out.release()
+                cv2.imwrite(save_dir + str(i) + str(person)+ ".png", img)
+                #cv2.imshow('ImageWindow', img)
+                #cv2.waitKey()
 
     #single point prediction
     else:

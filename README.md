@@ -1,9 +1,10 @@
-# imotion-m3p
-  This repository contains the project "Egocentric Multi-pedestrian Path Prediction (M3P) in Traffic Scenarios" which is being developed in iMotion Germany by Atanas Poibrenski
+# M2P3
+  This repository contains the code for the paper "M2P3: Multimodal Multi-Pedestrian Path Prediction by Self-Driving Cars With Egocentric Vision"
+  https://www.dfki.de/~klusch/i2s/Paper_1137_-_M2P3.pdf	
 
 # Dependencies
   
-  The code was tested on Ubuntu 16.04,Python 3 and a GTX 1080 gpu . The following dependencies are needed:
+  The code was tested on Ubuntu 16.04,Python 3 and a GTX 1080ti gpu . The following dependencies are needed:
   ```
   numpy
   scipy
@@ -18,55 +19,24 @@
   imgaug
   scikit-learn
   ```
-  The dependencies can be installed using "pip install"
+  The dependencies can be installed by using "pip install"
 
 
-# Milestone 1 (M1)
-
-  We demonstrate Milestone 1 by showing the bounding box and unique ID’s (of the pedestrians) together with the optical flow of the scene given the input images. The code uses the implementation of [1], [2] and [3]. In order to run the demo, the following steps should be taken:
+# Instructions
   
-  1. Download the extract the whole project
-  2. Download the mask-RCNN weights from here https://github.com/matterport/Mask_RCNN/releases/download/v2.0/mask_rcnn_coco.h5
-  3. Put the mask_rcnn_coco.h5 file in ./HumanAppearance/mask_RCNN+deepSORT/deep_sort_mask_rcnn/Mask_RCNN
-  4. Download the optical flow model pwcnet-lg-6-2-multisteps-chairsthingsmix-20190314T111850Z-001.zip from https://drive.google.com/drive/folders/1iRJ8SFF6fyoICShRVWuzr192m_DgzSYp
-  5. Extract pwcnet-lg-6-2-multisteps-chairsthingsmix in ./OpticalFlow/tpflow/tfoptflow-master/tfoptflow/models
-  6. Navigate to ./HumanAppearance/mask_RCNN+deepSORT/deep_sort_mask_rcnn and run 
-     
-  ```
-   python demo.py demo_video.mp4
-  ```
-  There are already two sample videos showing the results.
-
-# Milestone 2 (M2)
-  
-  We demonstrate Milestone 2 by showing how to train/test a model on the JAAD dataset. The model is currently using just the past bounding boxes of the pedestrians to make a prediction. The model observes 0.5 seconds in the past and predicts 1 second into the future.
+  Train/test a model on the JAAD dataset. The model is currently using just the past bounding boxes of the pedestrians to make a prediction. The model observes 0.5 seconds in the past and predicts 1 second into the future.
 
   1. To train a model run:
   
   ```
-   python m3p.py --train
+   python m2p3.py --train
   ```
    This will train a model with the default hyperparameters and will save the model in the models/ folder.
   
   2. To test and visualize a model run:
 
   ```
-   python m3p.py --test --model path_to_model_file -vis
+   python m2p3.py --test --model path_to_model_file -vis
   ```
-   This will visualize the predictions in the results/ folder. You can also use the --num_samples parameter to specify how many predictions the model will output. If --num_samples > 1 the predictions will be clustered into 3 trajectories (using k-means), assigning a probability to each.
+   This will visualize the predictions in the results/ folder. You can also use the --num_samples parameter to specify how many predictions the model will output. If --num_samples > 3 the predictions will be clustered into 3 trajectories (using k-means), assigning a probability to each.
 
-# Milestone 3 (M3) 
-  
-  N/A
-
-# Milestone 4 (M4)
-
- End of July 2019
-
-# References
-
-[1] K. He, G. Gkioxari, P. Dollar, and R. Girshick, “Mask R-CNN,” in IEEE International Conference on Computer Vision (ICCV), 2017.
-
-[2] A. Bewley, Z. Ge, L. Ott, F. Ramos, and B. Upcroft, “Simple online and realtime tracking,” in IEEE International Conference on Image Processing (ICIP), 2016.
-
-[3] Deqing Sun et al. "PWC-Net: CNNs for Optical Flow Using Pyramid, Warping, and Cost Volume," (CVPR 2018)
